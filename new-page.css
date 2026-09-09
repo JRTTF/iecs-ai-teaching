@@ -1,0 +1,232 @@
+/* ===== 表單元件通用樣式 (Form Controls) ===== */
+.form-group {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 8px;
+    color: #2C3E50;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-control {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid #EAECEF;
+    border-radius: 8px;
+    background-color: #FAFAFA;
+    color: #2C3E50;
+    font-size: 15px;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    outline: none;
+}
+
+.form-control::placeholder {
+    color: #B0B7C3;
+}
+
+.form-control:focus {
+    border-color: #CBA052;
+    background-color: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(203, 160, 82, 0.15); /* 金色光暈 */
+}
+
+/* 驗證碼專用佈局 */
+.captcha-group {
+    display: flex;
+    gap: 12px;
+}
+
+.captcha-image {
+    width: 120px;
+    height: 46px;
+    background: #EAECEF;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-family: monospace;
+    font-size: 20px;
+    font-weight: bold;
+    color: #7A869A;
+    letter-spacing: 4px;
+    cursor: pointer;
+    user-select: none;
+    border: 1px dashed #B0B7C3;
+}
+
+select.form-control {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237A869A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 16px;
+    cursor: pointer;
+}
+
+/* ===== 登入頁面專屬佈局 (Login Page) ===== */
+.login-wrapper {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #FAFAFA; /* 全螢幕淺色背景 */
+    padding: 20px;
+}
+
+.login-card {
+    background: #FFFFFF;
+    width: 100%;
+    max-width: 420px;
+    padding: 40px;
+    border-radius: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+    border: 1px solid #EAECEF;
+    text-align: center;
+}
+
+.login-logo {
+    margin-bottom: 24px;
+}
+
+.login-logo h1 {
+    font-size: 28px;
+    color: #2C3E50;
+    letter-spacing: 1px;
+}
+
+.login-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    margin-bottom: 24px;
+    font-size: 14px;
+}
+
+.login-link {
+    color: #7A869A;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.login-link:hover {
+    color: #CBA052;
+}
+
+.btn-block {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    justify-content: center;
+}
+
+.register-prompt {
+    margin-top: 24px;
+    font-size: 14px;
+    color: #7A869A;
+}
+
+.register-prompt a {
+    color: #CBA052;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.login-error {
+    color: #D64545;
+    font-size: 13px;
+    text-align: left;
+    margin: -8px 0 16px;
+    display: none;
+}
+
+.login-error.is-visible {
+    display: block;
+}
+
+.login-error.is-success {
+    color: #2E7D32;
+}
+
+.register-card {
+    max-width: 480px;
+}
+
+.login-caption {
+    color: #7A869A;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
+.gold-checkbox {
+    accent-color: #CBA052;
+}
+
+/* ===== 帳戶設定頁面專屬佈局 (Profile Page) ===== */
+.profile-card {
+    max-width: 700px;
+}
+
+.profile-header-row {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #EAECEF;
+}
+
+.profile-avatar-lg {
+    width: 80px;
+    height: 80px;
+    font-size: 32px;
+}
+
+.avatar-upload-btn {
+    padding: 6px 12px;
+    margin-bottom: 8px;
+}
+
+.hint-text {
+    font-size: 12px;
+    color: #7A869A;
+}
+
+.form-row {
+    display: flex;
+    gap: 20px;
+}
+
+.form-group--grow-1 {
+    flex: 1;
+}
+
+.form-group--grow-2 {
+    flex: 2;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 32px;
+}
+
+.btn-lg {
+    padding: 12px 32px;
+}
+
+.icon-20 {
+    font-size: 20px;
+}

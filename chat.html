@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 對話 | AI 智慧教材</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="Style.css">
+  <style>
+    /* 對話區：填滿主內容區，訊息串可捲動、輸入框固定在下方 */
+    /* .main-content 是 column flex + align-items:center，子元素會縮到內容寬度，
+       所以這裡要明確給寬度才不會被擠成細長條；寬螢幕上限 980px 保持易讀行長。 */
+    .chat-wrap { display: flex; flex-direction: column; height: calc(100vh - 190px);
+      width: 100%; max-width: 980px; align-self: center;
+      background: var(--bg-card); border: 1px solid var(--divider-color);
+      border-radius: 16px; padding: 24px; box-shadow: 0 4px 15px rgba(0,0,0,.02); }
+    .chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 14px; padding-right: 6px; }
+    .chat-msg { padding: 12px 16px; border-radius: 12px; line-height: 1.8;
+      max-width: 82%; white-space: pre-wrap; }
+    .chat-msg.user { align-self: flex-end; background: rgba(128,128,128,.14); }
+    .chat-msg.ai { align-self: flex-start; background: rgba(128,128,128,.06);
+      border: 1px solid var(--divider-color); }
+    .chat-msg .who { display: block; font-size: .72rem; opacity: .6;
+      letter-spacing: 1px; margin-bottom: 4px; }
+    .chat-empty { margin: auto; text-align: center; opacity: .55; line-height: 2; }
+    .chat-input-bar { display: flex; gap: 10px; align-items: flex-end;
+      margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--divider-color); }
+    .chat-input-bar textarea { flex: 1; min-height: 52px; max-height: 160px;
+      padding: 14px 16px; border-radius: 12px; border: 1px solid var(--divider-color);
+      background: transparent; color: var(--text-primary); font-family: inherit;
+      font-size: 1rem; resize: vertical; outline: none; }
+    .chat-input-bar textarea:focus { border-color: var(--accent-color); }
+    .material-status { font-size: .82rem; line-height: 1.7; opacity: .75;
+      padding: 10px 12px; border-radius: 10px; background: rgba(128,128,128,.08); }
+    .material-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    /* AI 回覆的 Markdown 渲染樣式；.chat-msg 原本是 pre-wrap，
+       改成由這些區塊自行控制排版，避免多出一堆空白行 */
+    .chat-msg.ai .body { white-space: normal; }
+    .chat-msg .md-h { margin: 14px 0 6px; line-height: 1.5; font-weight: 700; }
+    .chat-msg h3.md-h { font-size: 1.08rem; }
+    .chat-msg h4.md-h { font-size: 1rem; }
+    .chat-msg h5.md-h, .chat-msg h6.md-h { font-size: .95rem; }
+    .chat-msg .md-p { margin: 4px 0; }
+    .chat-msg .md-list { margin: 6px 0 6px 1.4em; padding: 0; }
+    .chat-msg .md-list li { margin: 3px 0; }
+    .chat-msg code { background: rgba(128,128,128,.18); padding: 1px 5px;
+      border-radius: 5px; font-size: .92em; font-family: Consolas, monospace; }
+    .chat-msg pre { background: rgba(128,128,128,.14); padding: 12px 14px;
+      border-radius: 10px; overflow-x: auto; margin: 8px 0; }
+    .chat-msg pre code { background: none; padding: 0; }
+    .chat-msg hr { border: none; border-top: 1px solid var(--divider-color); margin: 12px 0; }
+    .chat-msg br + br { display: none; }
+    .dots::after { content: '…'; animation: dots 1.2s steps(4, end) infinite; }
+    @keyframes dots { 0% { content: ''; } 25% { content: '·'; }
+      50% { content: '··'; } 75% { content: '···'; } }
+  </style>
+</head>
+<body>
+<div class="app-container">
+
+  <nav class="primary-sidebar">
+    <div class="nav-top-group">
+      <button class="icon-btn" id="sidebar-toggle-btn" title="展開/收合工作區">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <a href="index.html" class="icon-btn" title="主頁">
+        <span class="material-symbols-outlined">home</span>
+      </a>
+      <a href="chat.html" class="icon-btn active" title="AI 對話">
+        <span class="material-symbols-outlined">chat</span>
+      </a>
+      <a href="text-page.html" class="icon-btn" title="文字轉譯">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="presentation.html" class="icon-btn" title="智慧簡報">
+        <span class="material-symbols-outlined">slideshow</span>
+      </a>
+      <a href="video-page.html" class="icon-btn" title="影音合成">
+        <span class="material-symbols-outlined">video_library</span>
+      </a>
+      <a href="quiz.html" class="icon-btn" title="隨堂測驗">
+        <span class="material-symbols-outlined">quiz</span>
+      </a>
+      <a href="forum.html" class="icon-btn" title="知識論壇">
+        <span class="material-symbols-outlined">forum</span>
+      </a>
+    </div>
+    <div class="nav-bottom-group">
+      <button class="icon-btn" title="登出">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="secondary-sidebar" id="main-sidebar">
+    <div class="sidebar-header"><h2>對話工作區</h2></div>
+    <div class="history-section">
+      <h3 class="section-title">參考教材</h3>
+      <div class="material-status" id="material-status">
+        目前為一般對話模式，未使用教材。
+      </div>
+      <div class="material-actions">
+        <button class="upload-btn" id="upload-material-btn">
+          <span class="material-symbols-outlined">upload_file</span> 上傳教材 PDF
+        </button>
+        <input type="file" id="material-file" accept="application/pdf" hidden>
+        <button class="upload-btn" id="clear-material-btn">
+          <span class="material-symbols-outlined">close</span> 取消使用教材
+        </button>
+        <button class="upload-btn" id="clear-chat-btn">
+          <span class="material-symbols-outlined">restart_alt</span> 清空對話
+        </button>
+      </div>
+    </div>
+    <div class="user-profile">
+      <div class="avatar">林</div>
+      <div class="user-info">
+        <div class="user-name">林柔杉</div>
+        <div class="user-status"><span class="status-dot"></span> 已登入</div>
+      </div>
+      <button class="icon-btn settings-btn"><span class="material-symbols-outlined">settings</span></button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <a href="index.html" class="home-btn">
+      <span class="material-symbols-outlined">home</span> 返回主頁
+    </a>
+    <div class="page-header">
+      <h1 class="page-title">AI <span class="highlight-gold">對話</span>助手</h1>
+      <p class="page-subtitle">隨時提問、討論課業或日常問題；需要時可於左側掛上教材，AI 會依教材回答。</p>
+    </div>
+
+    <div class="chat-wrap">
+      <div class="chat-log" id="chat-log">
+        <div class="chat-empty" id="chat-empty">
+          開始你的第一個問題吧<br>
+          <span style="font-size:.85rem">例如：幫我解釋遞迴、今天想學什麼好、這題怎麼算</span>
+        </div>
+      </div>
+      <div class="chat-input-bar">
+        <textarea id="chat-input" placeholder="輸入訊息…（Enter 送出、Shift+Enter 換行）"></textarea>
+        <button class="generate-main-btn btn-compact" id="send-btn">
+          <span class="material-symbols-outlined icon-18">send</span> 送出
+        </button>
+      </div>
+    </div>
+
+    <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
+  </main>
+
+</div>
+<script src="common.js"></script>
+<script src="eduai.js"></script>
+<script>
+(function () {
+  const log       = document.getElementById('chat-log');
+  const empty     = document.getElementById('chat-empty');
+  const input     = document.getElementById('chat-input');
+  const sendBtn   = document.getElementById('send-btn');
+  const matStatus = document.getElementById('material-status');
+  const upBtn     = document.getElementById('upload-material-btn');
+  const upFile    = document.getElementById('material-file');
+  const clearMat  = document.getElementById('clear-material-btn');
+  const clearChat = document.getElementById('clear-chat-btn');
+
+  let history  = [];   // 對話脈絡
+  let material = '';   // 掛上的教材內容（可空＝純聊天）
+  let matName  = '';
+
+  /* ── 極簡 Markdown 渲染 ──
+   * AI 回覆帶 ###、**粗體**、清單、``` 程式碼；先前直接塞 textContent，
+   * 這些符號會原樣露出來。這裡全部用 createElement + textContent 組節點，
+   * 不碰 innerHTML，所以維持原本防 XSS 的性質。
+   * 串流過程仍走純文字（快），整段收完後再一次渲染。 */
+
+  // 行內：**粗體**、`程式碼`
+  function inline(target, text) {
+    const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+    let last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) target.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const tok = m[0];
+      if (tok.startsWith('**')) {
+        const b = document.createElement('strong');
+        b.textContent = tok.slice(2, -2);
+        target.appendChild(b);
+      } else {
+        const c = document.createElement('code');
+        c.textContent = tok.slice(1, -1);
+        target.appendChild(c);
+      }
+      last = m.index + tok.length;
+    }
+    if (last < text.length) target.appendChild(document.createTextNode(text.slice(last)));
+  }
+
+  function renderMarkdown(text, el) {
+    el.textContent = '';
+    const lines = text.split(String.fromCharCode(10));
+    let list = null;          // 目前正在累積的 ul/ol
+    let code = null;          // 目前正在累積的 code block
+
+    const closeList = () => { list = null; };
+
+    for (const raw of lines) {
+      const line = raw.replace(/\s+$/, '');
+
+      // ``` 圍起來的程式碼區塊
+      if (/^```/.test(line.trim())) {
+        if (code) { code = null; }
+        else {
+          closeList();
+          const pre = document.createElement('pre');
+          code = document.createElement('code');
+          pre.appendChild(code);
+          el.appendChild(pre);
+        }
+        continue;
+      }
+      if (code) {
+        code.textContent += line + String.fromCharCode(10);
+        continue;
+      }
+
+      // 空行：段落間距
+      if (!line.trim()) { closeList(); el.appendChild(document.createElement('br')); continue; }
+
+      // 標題 # ~ ####
+      const h = line.match(/^(#{1,4})\s+(.*)$/);
+      if (h) {
+        closeList();
+        const tag = 'h' + Math.min(6, h[1].length + 2);   // ### → h5，視覺上不要太大
+        const node = document.createElement(tag);
+        node.className = 'md-h';
+        inline(node, h[2]);
+        el.appendChild(node);
+        continue;
+      }
+
+      // 分隔線
+      if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
+        closeList();
+        el.appendChild(document.createElement('hr'));
+        continue;
+      }
+
+      // 有序 / 無序清單
+      const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      const ul = line.match(/^\s*[-*]\s+(.*)$/);
+      if (ol || ul) {
+        const want = ol ? 'OL' : 'UL';
+        if (!list || list.tagName !== want) {
+          list = document.createElement(want === 'OL' ? 'ol' : 'ul');
+          list.className = 'md-list';
+          el.appendChild(list);
+        }
+        const li = document.createElement('li');
+        inline(li, (ol || ul)[1]);
+        list.appendChild(li);
+        continue;
+      }
+
+      // 一般段落
+      closeList();
+      const p = document.createElement('div');
+      p.className = 'md-p';
+      inline(p, line);
+      el.appendChild(p);
+    }
+  }
+
+  function addBubble(role, text) {
+    empty.style.display = 'none';
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + (role === 'user' ? 'user' : 'ai');
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = role === 'user' ? '我' : 'AI';
+    div.appendChild(who);
+    const body = document.createElement('span');
+    body.className = 'body';
+    body.textContent = text;
+    div.appendChild(body);
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+    return body;   // 回傳內文節點，串流時直接往上追加
+  }
+
+  async function send() {
+    const q = input.value.trim();
+    if (!q) return;
+
+    if (!(await EduAI.isOnline())) {
+      addBubble('ai', eduaiOfflineMessage());
+      return;
+    }
+
+    input.value = '';
+    addBubble('user', q);
+    const body = addBubble('ai', '');
+    body.className = 'dots';
+    sendBtn.disabled = true;
+
+    let first = true;
+    try {
+      const reply = await EduAI.chatStream(q, material, history, (chunk) => {
+        if (first) { body.className = 'body'; body.textContent = ''; first = false; }
+        body.textContent += chunk;
+        log.scrollTop = log.scrollHeight;
+      });
+      if (!reply) { body.className = 'body'; body.textContent = '（沒有收到回覆）'; }
+      else { body.className = 'body'; renderMarkdown(reply, body); }   // 串流完才渲染，過程中維持純文字
+      history.push({ role: 'user', content: q });
+      history.push({ role: 'assistant', content: reply });
+      if (history.length > 16) history = history.slice(-16);   // 只留最近幾輪，避免拖慢
+    } catch (e) {
+      body.className = 'body';
+      body.textContent = '回覆失敗：' + e.message;
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  // ── 教材：掛上後每次提問都會帶著它 ──
+  upBtn.addEventListener('click', () => upFile.click());
+  upFile.addEventListener('change', async () => {
+    const f = upFile.files[0];
+    if (!f) return;
+    matStatus.textContent = '讀取教材中…';
+    try {
+      const data = await EduAI.uploadPdf(f);
+      material = data.content || '';
+      matName = f.name;
+      matStatus.textContent = `已掛上教材：${matName}（${material.length} 字）。之後的提問 AI 會依此教材回答。`;
+    } catch (e) {
+      matStatus.textContent = '教材讀取失敗：' + e.message;
+    }
+  });
+
+  clearMat.addEventListener('click', () => {
+    material = ''; matName = '';
+    upFile.value = '';
+    matStatus.textContent = '目前為一般對話模式，未使用教材。';
+  });
+
+  clearChat.addEventListener('click', () => {
+    history = [];
+    log.querySelectorAll('.chat-msg').forEach(el => el.remove());
+    empty.style.display = '';
+  });
+
+  input.focus();
+})();
+</script>
+</body>
+</html>

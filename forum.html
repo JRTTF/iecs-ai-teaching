@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>知識論壇 | AI 智慧教材</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="Style.css">
+  <style>
+    .new-post-form { display: none; background: var(--bg-card); border: 1px solid var(--divider-color);
+      border-radius: 16px; padding: 24px; margin-bottom: 20px; }
+    .new-post-form.show { display: block; }
+    .new-post-form input, .new-post-form textarea { width: 100%; padding: 12px 14px; margin-bottom: 12px;
+      border-radius: 10px; border: 1px solid var(--divider-color); background: transparent;
+      color: var(--text-primary); font-family: inherit; font-size: 1rem; outline: none; }
+    .new-post-form textarea { min-height: 110px; resize: vertical; }
+    .new-post-form input:focus, .new-post-form textarea:focus { border-color: var(--accent-color); }
+    .form-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .forum-status { padding: 16px; border-radius: 10px; background: rgba(128,128,128,.1);
+      font-size: .92rem; line-height: 1.7; }
+    .comment-area { display: none; margin-top: 14px; padding-top: 14px;
+      border-top: 1px solid var(--divider-color); }
+    .comment-area.show { display: block; }
+    .comment-item { padding: 8px 0; font-size: .93rem; line-height: 1.6; }
+    .comment-item .who { font-weight: 700; margin-right: 8px; }
+    .comment-input-row { display: flex; gap: 8px; margin-top: 10px; }
+    .comment-input-row input { flex: 1; padding: 10px 12px; border-radius: 8px;
+      border: 1px solid var(--divider-color); background: transparent;
+      color: var(--text-primary); font-family: inherit; outline: none; }
+    .interaction-btn.liked { color: var(--accent-color); font-weight: 700; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+
+  <nav class="primary-sidebar">
+    <div class="nav-top-group">
+      <button class="icon-btn" id="sidebar-toggle-btn" title="展開/收合工作區">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <a href="index.html" class="icon-btn" title="主頁">
+        <span class="material-symbols-outlined">home</span>
+      </a>
+      <a href="chat.html" class="icon-btn" title="AI 對話">
+        <span class="material-symbols-outlined">chat</span>
+      </a>
+      <a href="text-page.html" class="icon-btn" title="文字轉譯">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="presentation.html" class="icon-btn" title="智慧簡報">
+        <span class="material-symbols-outlined">slideshow</span>
+      </a>
+      <a href="video-page.html" class="icon-btn" title="影音合成">
+        <span class="material-symbols-outlined">video_library</span>
+      </a>
+      <a href="quiz.html" class="icon-btn" title="隨堂測驗">
+        <span class="material-symbols-outlined">quiz</span>
+      </a>
+      <a href="forum.html" class="icon-btn active" title="知識論壇">
+        <span class="material-symbols-outlined">forum</span>
+      </a>
+    </div>
+    <div class="nav-bottom-group">
+      <button class="icon-btn" title="登出">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="secondary-sidebar" id="main-sidebar">
+    <div class="sidebar-header"><h2>系統工作區</h2></div>
+    <div class="history-section">
+      <h3 class="section-title">最近活動</h3>
+      <ul class="history-list">
+        <li class="history-item active"><span class="hash">#</span> 當前講義生成</li>
+        <li class="history-item"><span class="hash">#</span> 中英對照測試</li>
+      </ul>
+    </div>
+    <div class="user-profile">
+      <div class="avatar">林</div>
+      <div class="user-info">
+        <div class="user-name">林柔杉</div>
+        <div class="user-status"><span class="status-dot"></span> 已登入</div>
+      </div>
+      <button class="icon-btn settings-btn"><span class="material-symbols-outlined">settings</span></button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <a href="index.html" class="home-btn">
+      <span class="material-symbols-outlined">home</span> 返回主頁
+    </a>
+    <div class="page-header forum-header">
+      <div>
+        <h1 class="page-title">學習交流<span class="highlight-gold">論壇</span></h1>
+        <p class="page-subtitle">在這裡與同學討論課程內容、分享學習心得或向 AI 提問。</p>
+      </div>
+      <button class="action-btn solid-btn new-post-btn"><span class="material-symbols-outlined">edit_square</span> 發表新主題</button>
+    </div>
+    <div class="new-post-form" id="new-post-form">
+      <input type="text" id="post-title" placeholder="標題，例如：關於 CH3 的運動學矩陣轉換">
+      <textarea id="post-content" placeholder="輸入你想討論的內容…"></textarea>
+      <input type="text" id="post-tags" placeholder="標籤，以逗號分隔（例如：技術討論, 機器人學）">
+      <div class="form-actions">
+        <button class="action-btn outline-btn" id="cancel-post-btn">取消</button>
+        <button class="action-btn solid-btn" id="submit-post-btn">發表</button>
+      </div>
+    </div>
+    <div class="forum-status" id="forum-status">載入中…</div>
+    <div class="forum-list" id="forum-list"></div>
+    <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
+  </main>
+
+</div>
+<script src="common.js"></script>
+<script>
+(function () {
+  const listEl   = document.getElementById('forum-list');
+  const statusEl = document.getElementById('forum-status');
+  const formEl   = document.getElementById('new-post-form');
+  const newBtn   = document.querySelector('.new-post-btn');
+
+  function getUser() {
+    try { return JSON.parse(localStorage.getItem('iecs_user') || 'null'); }
+    catch { return null; }
+  }
+
+  // transient=true 的提示（例如「請先登入才能按讚」）幾秒後自動收掉，
+  // 否則會一直卡在列表上方；載入中／空清單那種狀態訊息則保留。
+  let statusTimer = null;
+  function setStatus(msg, transient) {
+    clearTimeout(statusTimer);
+    statusEl.style.display = msg ? 'block' : 'none';
+    statusEl.textContent = msg || '';
+    if (msg && transient) statusTimer = setTimeout(() => setStatus(''), 4000);
+  }
+
+  // 相對時間，維持原本卡片「• 2 小時前」的呈現方式
+  function relTime(iso) {
+    const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (diff < 60) return '剛剛';
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分鐘前';
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小時前';
+    if (diff < 604800) return Math.floor(diff / 86400) + ' 天前';
+    return new Date(iso).toLocaleDateString('zh-TW');
+  }
+
+  // 文章與留言來自其他使用者，一律用 textContent 建立，不用 innerHTML，避免 XSS
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function iconBtn(icon, countValue) {
+    const btn = el('button', 'interaction-btn');
+    const ic = el('span', 'material-symbols-outlined', icon);
+    const cnt = el('span', 'count', String(countValue));
+    btn.appendChild(ic);
+    btn.appendChild(document.createTextNode(' '));
+    btn.appendChild(cnt);
+    return { btn, cnt };
+  }
+
+  function renderPost(post) {
+    const card = el('div', 'forum-post-card');
+    const name = (post.author && (post.author.nickname || post.author.realName)) || '訪客';
+
+    const header = el('div', 'post-header-info');
+    header.appendChild(el('div', 'author-avatar', name.charAt(0)));
+
+    const metaWrap = el('div', 'post-meta-and-tags');
+    const tagRow = el('div', 'post-tags');
+    (post.tags || []).forEach(t => tagRow.appendChild(el('span', 'tag tech-tag', t)));
+    metaWrap.appendChild(tagRow);
+
+    const meta = el('div', 'post-meta');
+    meta.appendChild(el('span', 'author-name', name));
+    meta.appendChild(el('span', 'post-time', ' • ' + relTime(post.createdAt)));
+    metaWrap.appendChild(meta);
+    header.appendChild(metaWrap);
+    card.appendChild(header);
+
+    card.appendChild(el('h3', 'post-title', post.title));
+    card.appendChild(el('p', 'post-excerpt', post.content));
+
+    const bar = el('div', 'post-interaction-bar');
+    const left = el('div', 'interaction-left');
+    const like = iconBtn('thumb_up', post.likeCount);
+    const cmt  = iconBtn('chat_bubble', post.commentCount);
+    left.appendChild(like.btn);
+    left.appendChild(cmt.btn);
+    bar.appendChild(left);
+    card.appendChild(bar);
+
+    const cmtArea = el('div', 'comment-area');
+    card.appendChild(cmtArea);
+
+    like.btn.addEventListener('click', async () => {
+      const u = getUser();
+      if (!u) { setStatus('請先登入才能按讚。', true); return; }
+      like.btn.disabled = true;
+      try {
+        const r = await fetch(API_BASE_URL + '/api/posts/' + post.id + '/like', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: u.id }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || '按讚失敗');
+        like.cnt.textContent = String(j.likeCount);
+        like.btn.classList.toggle('liked', j.liked);
+      } catch (e) {
+        setStatus('按讚失敗：' + e.message, true);
+      } finally {
+        like.btn.disabled = false;
+      }
+    });
+
+    cmt.btn.addEventListener('click', async () => {
+      const opening = !cmtArea.classList.contains('show');
+      cmtArea.classList.toggle('show', opening);
+      if (!opening) return;
+
+      cmtArea.textContent = '載入留言中…';
+      try {
+        const r = await fetch(API_BASE_URL + '/api/posts/' + post.id + '/comments');
+        const comments = await r.json();
+        cmtArea.textContent = '';
+        if (!comments.length) {
+          cmtArea.appendChild(el('div', 'comment-item', '還沒有留言，來當第一個吧。'));
+        }
+        comments.forEach(c => {
+          const row = el('div', 'comment-item');
+          row.appendChild(el('span', 'who', (c.author && c.author.nickname) || '訪客'));
+          row.appendChild(document.createTextNode(c.content));
+          cmtArea.appendChild(row);
+        });
+
+        const row = el('div', 'comment-input-row');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = '寫下你的留言…';
+        const send = el('button', 'action-btn outline-btn', '送出');
+        row.appendChild(input);
+        row.appendChild(send);
+        cmtArea.appendChild(row);
+
+        async function submitComment() {
+          const u = getUser();
+          if (!u) { setStatus('請先登入才能留言。', true); return; }
+          const text = input.value.trim();
+          if (!text) return;
+          send.disabled = true;
+          try {
+            const rr = await fetch(API_BASE_URL + '/api/posts/' + post.id + '/comments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: u.id, content: text }),
+            });
+            const j = await rr.json();
+            if (!rr.ok) throw new Error(j.error || '留言失敗');
+            const added = el('div', 'comment-item');
+            added.appendChild(el('span', 'who', (j.author && j.author.nickname) || '我'));
+            added.appendChild(document.createTextNode(j.content));
+            cmtArea.insertBefore(added, row);
+            input.value = '';
+            cmt.cnt.textContent = String(Number(cmt.cnt.textContent) + 1);
+          } catch (e) {
+            setStatus('留言失敗：' + e.message, true);
+          } finally {
+            send.disabled = false;
+          }
+        }
+        send.addEventListener('click', submitComment);
+        input.addEventListener('keydown', ev => { if (ev.key === 'Enter') submitComment(); });
+      } catch (e) {
+        cmtArea.textContent = '留言載入失敗：' + e.message;
+      }
+    });
+
+    return card;
+  }
+
+  async function loadPosts() {
+    setStatus('載入中…');
+    try {
+      const r = await fetch(API_BASE_URL + '/api/posts');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const posts = await r.json();
+      listEl.textContent = '';
+      if (!posts.length) {
+        setStatus('目前還沒有任何主題，點右上角「發表新主題」開始第一則討論。');
+        return;
+      }
+      setStatus('');
+      posts.forEach(p => listEl.appendChild(renderPost(p)));
+    } catch (e) {
+      setStatus('無法載入論壇文章：' + e.message + '（請確認網站後端已啟動）');
+    }
+  }
+
+  newBtn.addEventListener('click', () => {
+    if (!getUser()) { setStatus('請先登入才能發表主題。', true); return; }
+    formEl.classList.add('show');
+    document.getElementById('post-title').focus();
+  });
+
+  document.getElementById('cancel-post-btn').addEventListener('click', () => {
+    formEl.classList.remove('show');
+  });
+
+  document.getElementById('submit-post-btn').addEventListener('click', async () => {
+    const u = getUser();
+    if (!u) { setStatus('請先登入才能發表主題。', true); return; }
+    const title = document.getElementById('post-title').value.trim();
+    const content = document.getElementById('post-content').value.trim();
+    const tags = document.getElementById('post-tags').value
+      .split(',').map(t => t.trim()).filter(Boolean);
+    if (!title || !content) { setStatus('請填寫標題與內容。', true); return; }
+
+    const btn = document.getElementById('submit-post-btn');
+    btn.disabled = true;
+    try {
+      const r = await fetch(API_BASE_URL + '/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.id, title, content, tags }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || '發表失敗');
+      document.getElementById('post-title').value = '';
+      document.getElementById('post-content').value = '';
+      document.getElementById('post-tags').value = '';
+      formEl.classList.remove('show');
+      loadPosts();
+    } catch (e) {
+      setStatus('發表失敗：' + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  loadPosts();
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>註冊 - 智慧學習導航</title>
+  <link rel="stylesheet" href="Style.css">
+  <link rel="stylesheet" href="new-page.css">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="login-wrapper">
+  <div class="login-card register-card">
+    <div class="login-logo">
+      <h1>智慧學習<span class="highlight-gold">導航</span></h1>
+      <p class="login-caption">建立你的 FCU IECS 專題系統帳號</p>
+    </div>
+
+    <form id="register-form" novalidate>
+      <div class="form-group">
+        <label class="form-label" for="reg-account">帳號</label>
+        <input type="text" id="reg-account" class="form-control" placeholder="請輸入學號或帳號" required autocomplete="off">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group--grow-1">
+          <label class="form-label" for="reg-password">密碼</label>
+          <input type="password" id="reg-password" class="form-control" placeholder="至少 6 碼" required>
+        </div>
+        <div class="form-group form-group--grow-1">
+          <label class="form-label" for="reg-password-confirm">確認密碼</label>
+          <input type="password" id="reg-password-confirm" class="form-control" placeholder="再輸入一次" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group--grow-1">
+          <label class="form-label" for="reg-role">身分設定</label>
+          <select id="reg-role" class="form-control">
+            <option value="student" selected>學生 (Student)</option>
+            <option value="teacher">教師 (Teacher)</option>
+          </select>
+        </div>
+        <div class="form-group form-group--grow-2">
+          <label class="form-label" for="reg-school">學校名稱</label>
+          <input type="text" id="reg-school" class="form-control" placeholder="請輸入學校名稱" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group form-group--grow-1">
+          <label class="form-label" for="reg-name">真實姓名</label>
+          <input type="text" id="reg-name" class="form-control" placeholder="您的姓名" required>
+        </div>
+        <div class="form-group form-group--grow-1">
+          <label class="form-label" for="reg-nickname">顯示暱稱</label>
+          <input type="text" id="reg-nickname" class="form-control" placeholder="留白則使用真實姓名">
+        </div>
+      </div>
+
+      <p id="register-message" class="login-error"></p>
+
+      <button type="submit" class="action-btn solid-btn btn-block">建立帳號</button>
+    </form>
+
+    <div class="register-prompt">
+      已經有帳號了？ <a href="login.html">返回登入</a>
+    </div>
+  </div>
+</div>
+<script src="common.js"></script>
+</body>
+</html>

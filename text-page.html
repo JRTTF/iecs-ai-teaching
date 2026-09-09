@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文字轉譯 | AI 智慧教材</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="Style.css">
+  <style>
+    /* ── EduAI 文字生成區（沿用站內 class，只補這頁需要的版面）── */
+    .gen-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .gen-row > input[type=text] { flex: 1; min-width: 200px; padding: 11px 14px;
+      border-radius: 10px; border: 1px solid rgba(128,128,128,.35);
+      background: rgba(128,128,128,.06); color: inherit; font-family: inherit; font-size: .95rem; }
+    .gen-hint { font-size: .8rem; opacity: .65; }
+    .gen-status { display: none; margin-bottom: 14px; padding: 12px 16px; border-radius: 10px;
+      background: rgba(128,128,128,.1); font-size: .9rem; line-height: 1.6; }
+    .gen-status.show { display: block; }
+    .gen-status.error { background: rgba(220,70,70,.12); }
+    .spin { display: inline-block; width: 13px; height: 13px; margin-right: 8px;
+      border: 2px solid rgba(128,128,128,.3); border-top-color: currentColor;
+      border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* 追問對話串 */
+    .chat-log { margin: 18px 0 0; display: flex; flex-direction: column; gap: 12px; }
+    .chat-msg { padding: 12px 16px; border-radius: 12px; line-height: 1.75;
+      max-width: 88%; white-space: pre-wrap; }
+    .chat-msg.user { align-self: flex-end; background: rgba(128,128,128,.14); }
+    .chat-msg.ai { align-self: flex-start; background: rgba(128,128,128,.06);
+      border: 1px solid var(--divider-color); }
+    .chat-msg .who { display: block; font-size: .72rem; opacity: .6;
+      letter-spacing: 1px; margin-bottom: 4px; }
+    #chat-input { min-height: 84px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+
+  <nav class="primary-sidebar">
+    <div class="nav-top-group">
+      <button class="icon-btn" id="sidebar-toggle-btn" title="展開/收合工作區">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <a href="index.html" class="icon-btn" title="主頁">
+        <span class="material-symbols-outlined">home</span>
+      </a>
+      <a href="chat.html" class="icon-btn" title="AI 對話">
+        <span class="material-symbols-outlined">chat</span>
+      </a>
+      <a href="text-page.html" class="icon-btn active" title="文字轉譯">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="presentation.html" class="icon-btn" title="智慧簡報">
+        <span class="material-symbols-outlined">slideshow</span>
+      </a>
+      <a href="video-page.html" class="icon-btn" title="影音合成">
+        <span class="material-symbols-outlined">video_library</span>
+      </a>
+      <a href="quiz.html" class="icon-btn" title="隨堂測驗">
+        <span class="material-symbols-outlined">quiz</span>
+      </a>
+      <a href="forum.html" class="icon-btn" title="知識論壇">
+        <span class="material-symbols-outlined">forum</span>
+      </a>
+    </div>
+    <div class="nav-bottom-group">
+      <button class="icon-btn" title="登出">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="secondary-sidebar" id="main-sidebar">
+    <div class="sidebar-header"><h2>系統工作區</h2></div>
+    <div class="history-section">
+      <h3 class="section-title">最近活動</h3>
+      <ul class="history-list">
+        <li class="history-item active"><span class="hash">#</span> 當前講義生成</li>
+        <li class="history-item"><span class="hash">#</span> 中英對照測試</li>
+      </ul>
+    </div>
+    <div class="user-profile">
+      <div class="avatar">林</div>
+      <div class="user-info">
+        <div class="user-name">林柔杉</div>
+        <div class="user-status"><span class="status-dot"></span> 已登入</div>
+      </div>
+      <button class="icon-btn settings-btn"><span class="material-symbols-outlined">settings</span></button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <a href="index.html" class="home-btn">
+      <span class="material-symbols-outlined">home</span> 返回主頁
+    </a>
+    <div class="hero-section hero-section--left">
+      <h1 class="main-title">文字<span class="highlight">轉譯與分析</span></h1>
+    </div>
+    <div class="workspace">
+      <div class="text-panel">
+        <h2>AI 生成講義內容</h2>
+        <div class="gen-status" id="text-status"></div>
+        <div class="content-area" id="text-output">
+          <p>請回主頁選擇學習主題，AI 將在此生成講義內容。</p>
+        </div>
+        <div class="action-bar">
+          <button class="generate-main-btn btn-compact" id="text-pdf-btn">
+            <span class="material-symbols-outlined icon-18">download</span> 下載 PDF
+          </button>
+          <button class="upload-btn" id="text-copy-btn">
+            <span class="material-symbols-outlined icon-18">content_copy</span> 複製內容
+          </button>
+        </div>
+
+        <div class="chat-log" id="chat-log"></div>
+        <textarea class="main-textarea" id="chat-input"
+          placeholder="針對以上內容繼續追問，例如：第二點可以再舉一個例子嗎？"></textarea>
+        <div class="action-bar">
+          <button class="generate-main-btn btn-compact" id="chat-send-btn">
+            <span class="material-symbols-outlined icon-18">send</span> 送出提問
+          </button>
+        </div>
+      </div>
+    </div>
+    <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
+  </main>
+
+</div>
+<script src="common.js"></script>
+<script src="eduai.js"></script>
+<script>
+(function () {
+  const statusEl = document.getElementById('text-status');
+  const output   = document.getElementById('text-output');
+  const chatLog  = document.getElementById('chat-log');
+  const chatIn   = document.getElementById('chat-input');
+  const sendBtn  = document.getElementById('chat-send-btn');
+
+  let lastText = '';
+  let topic    = '';
+  let history  = [];   // 對話脈絡，讓追問能接續前文
+
+  function setStatus(msg, loading) {
+    statusEl.className = 'gen-status show';
+    statusEl.innerHTML = (loading ? '<span class="spin"></span>' : '') + msg;
+  }
+
+  // 純文字轉段落（不把 AI 回覆當 HTML 解析）
+  function renderText(text) {
+    output.innerHTML = '';
+    text.split(/\n+/).filter(Boolean).forEach(line => {
+      const p = document.createElement('p');
+      p.textContent = line;
+      output.appendChild(p);
+    });
+  }
+
+  function addBubble(role, text) {
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + (role === 'user' ? 'user' : 'ai');
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = role === 'user' ? '我' : 'AI';
+    div.appendChild(who);
+    div.appendChild(document.createTextNode(text));
+    chatLog.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return div;
+  }
+
+  // ── 追問：帶著前文脈絡繼續問 ──
+  async function sendQuestion() {
+    const q = chatIn.value.trim();
+    if (!q) return;
+    if (!(await EduAI.isOnline())) {
+      setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
+      return;
+    }
+    chatIn.value = '';
+    addBubble('user', q);
+    const pending = addBubble('ai', '思考中…');
+    sendBtn.disabled = true;
+    try {
+      const reply = await EduAI.chat(q, lastText, history);
+      pending.remove();
+      addBubble('ai', reply);
+      history.push({ role: 'user', content: q });
+      history.push({ role: 'assistant', content: reply });
+      if (history.length > 12) history = history.slice(-12);   // 只留最近幾輪，避免脈絡過長
+    } catch (e) {
+      pending.remove();
+      addBubble('ai', '回覆失敗：' + e.message);
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  sendBtn.addEventListener('click', sendQuestion);
+  chatIn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+  });
+
+  document.getElementById('text-copy-btn').addEventListener('click', async () => {
+    if (!lastText) { setStatus('尚無內容可複製。'); return; }
+    await navigator.clipboard.writeText(lastText);
+    setStatus('已複製到剪貼簿。');
+  });
+
+  // 「下載 PDF」：交給瀏覽器列印成 PDF（不需額外套件）
+  document.getElementById('text-pdf-btn').addEventListener('click', () => {
+    if (!lastText) { setStatus('尚無內容可下載。'); return; }
+    window.print();
+  });
+
+  // ── 載入：從首頁引導流程取得主題，自動生成講義 ──
+  (async function init() {
+    const guide = EduAIGuide.load();
+    topic = guide && guide.topic ? guide.topic : '';
+    if (!topic) return;   // 沒主題就維持原本提示
+
+    if (!(await EduAI.isOnline())) {
+      setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
+      return;
+    }
+
+    setStatus(`正在為「${topic}」生成講義內容…`, true);
+    try {
+      const level = guide.level ? `學習程度為${guide.level}，` : '';
+      const prompt = `請針對「${topic}」生成一份條理清楚的教學講義內容，${level}` +
+                     `包含定義、原理說明與具體例子，使用台灣繁體中文。`;
+      lastText = await EduAI.chat(prompt, guide.content || '');
+      renderText(lastText);
+      // 講義本身也算一輪對話，之後追問才接得上前文
+      history = [{ role: 'user', content: prompt },
+                 { role: 'assistant', content: lastText }];
+      setStatus('講義生成完成，可於下方繼續追問。');
+    } catch (e) {
+      setStatus('生成失敗：' + e.message);
+    }
+  })();
+})();
+</script>
+</body>
+</html>

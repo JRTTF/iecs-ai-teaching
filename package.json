@@ -1,0 +1,27 @@
+{
+  "name": "iecs-smart-learning-nav",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node server.js",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "express": "^4.19.2",
+    "multer": "^2.2.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.19.0"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "bcrypt@5.1.1": true,
+    "prisma@5.22.0": true,
+    "fsevents@2.3.3": true
+  }
+}

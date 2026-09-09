@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>影音合成 | AI 智慧教材</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="Style.css">
+  <style>
+    /* 影片播放器嵌入原本的 .video-container */
+    .video-container { position: relative; overflow: hidden; }
+    .video-container video { width: 100%; height: 100%; display: block;
+      border-radius: inherit; background: #000; }
+    .video-container.has-video .play-icon-lg,
+    .video-container.has-video .video-placeholder-text { display: none; }
+    .video-container:not(.has-video) video { display: none; }
+    .gen-status { display: none; margin: 14px 0; padding: 12px 16px; border-radius: 10px;
+      background: rgba(128,128,128,.12); font-size: .9rem; line-height: 1.6; }
+    .gen-status.show { display: block; }
+    .spin { display: inline-block; width: 13px; height: 13px; margin-right: 8px;
+      border: 2px solid rgba(128,128,128,.3); border-top-color: currentColor;
+      border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* 生成進度條：細長一條，跟著後端回報的百分比走 */
+    .gen-bar { display: none; height: 6px; border-radius: 3px; overflow: hidden;
+      background: rgba(128,128,128,.18); margin: 10px 0 0; }
+    .gen-bar.show { display: block; }
+    .gen-bar > span { display: block; height: 100%; width: 0; border-radius: 3px;
+      background: var(--accent-color); transition: width .6s ease; }
+    .subtitle-item { cursor: pointer; }
+    .subtitle-item:hover .timestamp { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+
+  <nav class="primary-sidebar">
+    <div class="nav-top-group">
+      <button class="icon-btn" id="sidebar-toggle-btn" title="展開/收合工作區">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <a href="index.html" class="icon-btn" title="主頁">
+        <span class="material-symbols-outlined">home</span>
+      </a>
+      <a href="chat.html" class="icon-btn" title="AI 對話">
+        <span class="material-symbols-outlined">chat</span>
+      </a>
+      <a href="text-page.html" class="icon-btn" title="文字轉譯">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="presentation.html" class="icon-btn" title="智慧簡報">
+        <span class="material-symbols-outlined">slideshow</span>
+      </a>
+      <a href="video-page.html" class="icon-btn active" title="影音合成">
+        <span class="material-symbols-outlined">video_library</span>
+      </a>
+      <a href="quiz.html" class="icon-btn" title="隨堂測驗">
+        <span class="material-symbols-outlined">quiz</span>
+      </a>
+      <a href="forum.html" class="icon-btn" title="知識論壇">
+        <span class="material-symbols-outlined">forum</span>
+      </a>
+    </div>
+    <div class="nav-bottom-group">
+      <button class="icon-btn" title="登出">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="secondary-sidebar" id="main-sidebar">
+    <div class="sidebar-header"><h2>影片章節</h2></div>
+    <div class="history-section">
+      <h3 class="section-title">腳本片段</h3>
+      <ul class="history-list">
+        <li class="history-item active"><span class="hash">#</span> 片頭引言</li>
+        <li class="history-item"><span class="hash">#</span> 技術展示 A</li>
+        <li class="history-item"><span class="hash">#</span> 結語與總結</li>
+      </ul>
+    </div>
+    <div class="user-profile">
+      <div class="avatar">林</div>
+      <div class="user-info">
+        <div class="user-name">林柔杉</div>
+        <div class="user-status"><span class="status-dot"></span> 已登入</div>
+      </div>
+      <button class="icon-btn settings-btn"><span class="material-symbols-outlined">settings</span></button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <a href="index.html" class="home-btn">
+      <span class="material-symbols-outlined">home</span> 返回主頁
+    </a>
+    <div class="hero-section">
+      <h1 class="main-title">智慧<span class="highlight">影音合成</span></h1>
+      <p class="subtitle">AI 已為您的教材配製同步語音與動態演示。</p>
+    </div>
+    <div class="gen-status" id="video-status"></div>
+    <div class="gen-bar" id="gen-bar"><span></span></div>
+    <div class="video-container" id="video-container">
+      <span class="material-symbols-outlined play-icon-lg">play_circle</span>
+      <div class="video-placeholder-text" id="video-placeholder">尚未生成影片</div>
+      <video id="video-player" controls preload="metadata"></video>
+    </div>
+    <div class="timeline-box">
+      <h3>生成字幕預覽</h3>
+      <div id="timeline-list">
+        <div class="subtitle-item"><span class="timestamp">--:--</span><span>尚未生成影片</span></div>
+      </div>
+    </div>
+    <div class="action-bar">
+      <button class="generate-main-btn" id="download-video-btn"><span class="material-symbols-outlined">download</span> 下載教學影片</button>
+    </div>
+    <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
+  </main>
+
+</div>
+<script src="common.js"></script>
+<script src="eduai.js"></script>
+<script>
+(function () {
+  const statusEl  = document.getElementById('video-status');
+  const genBar    = document.getElementById('gen-bar');
+  function setBar(pct) {   // pct=null 隱藏
+    if (pct === null) { genBar.classList.remove('show'); return; }
+    genBar.classList.add('show');
+    genBar.firstElementChild.style.width = Math.max(2, Math.min(100, pct)) + '%';
+  }
+  const container = document.getElementById('video-container');
+  const player    = document.getElementById('video-player');
+  const timeline  = document.getElementById('timeline-list');
+  const dlBtn     = document.getElementById('download-video-btn');
+  const subtitle  = document.querySelector('.hero-section .subtitle');
+
+  let videoUrl = '';
+  let topic    = '';
+
+  function setStatus(msg, loading) {
+    statusEl.className = 'gen-status show';
+    statusEl.innerHTML = (loading ? '<span class="spin"></span>' : '') + msg;
+  }
+
+  // 秒數 → mm:ss，配合原本字幕列的時間戳格式
+  function fmt(sec) {
+    const s = Math.max(0, Math.round(sec));
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function renderTimeline(items) {
+    if (!items.length) return;
+    timeline.innerHTML = '';
+    items.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'subtitle-item';
+      const ts = document.createElement('span');
+      ts.className = 'timestamp';
+      ts.textContent = fmt(it.start);
+      const tx = document.createElement('span');
+      tx.textContent = it.text || it.title || '';
+      row.append(ts, tx);
+      // 點字幕跳到影片對應時間
+      row.addEventListener('click', () => {
+        player.currentTime = it.start;
+        player.play().catch(() => { /* 使用者尚未互動時瀏覽器可能擋自動播放 */ });
+      });
+      timeline.appendChild(row);
+    });
+  }
+
+  dlBtn.addEventListener('click', () => {
+    if (!videoUrl) { setStatus('尚未生成影片，無法下載。'); return; }
+    const a = document.createElement('a');
+    a.href = videoUrl;
+    a.download = `${topic || '教學影片'}.mp4`;
+    a.click();
+  });
+
+  // ── 載入：從首頁引導流程取得主題，自動生成影片 ──
+  (async function init() {
+    const guide = EduAIGuide.load();
+    topic = guide && guide.topic ? guide.topic : '';
+
+    if (!topic) {
+      setStatus('尚未選定主題 — 請先<a href="index.html">回主頁</a>透過引導流程選擇學習主題。');
+      return;
+    }
+    if (!(await EduAI.isOnline())) {
+      setStatus(eduaiOfflineMessage().split(String.fromCharCode(10)).join('<br>'));
+      return;
+    }
+
+    if (subtitle) subtitle.textContent = `正在為「${topic}」生成教學影片…`;
+    setStatus('準備生成…', true);
+    setBar(2);
+
+    try {
+      const r = await EduAI.generateVideo(
+        topic, (guide && guide.content) || '', 'zh-TW 女聲（曉臻）',
+        (txt, pct) => { setStatus(txt, true); setBar(pct); });
+      setBar(100);
+      setTimeout(() => setBar(null), 800);
+
+      videoUrl = r.url;
+      player.src = videoUrl;
+      container.classList.add('has-video');
+      renderTimeline(r.timeline || []);
+      setStatus('影片生成完成，可直接播放或下載。');
+      if (subtitle) subtitle.textContent = 'AI 已為您的教材配製同步語音與動態演示。';
+    } catch (e) {
+      setStatus('影片生成失敗：' + e.message);
+      setBar(null);
+      if (subtitle) subtitle.textContent = 'AI 已為您的教材配製同步語音與動態演示。';
+    }
+  })();
+})();
+</script>
+</body>
+</html>

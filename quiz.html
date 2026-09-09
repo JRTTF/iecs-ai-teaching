@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>隨堂測驗 | AI 智慧教材</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="Style.css">
+  <style>
+    /* 生成狀態提示（本地 AI 需時間，沒有提示使用者會以為當機） */
+    .gen-status { display: none; margin-top: 14px; padding: 12px 16px; border-radius: 10px;
+      background: rgba(128,128,128,.12); font-size: .9rem; line-height: 1.6; }
+    .gen-status.show { display: block; }
+    .spin { display: inline-block; width: 13px; height: 13px; margin-right: 8px;
+      border: 2px solid rgba(128,128,128,.3); border-top-color: currentColor;
+      border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    /* ── 頁內作答區 ── */
+    .quiz-paper { display: none; margin: 18px 0 24px; padding: 22px;
+      background: var(--bg-card); border: 1px solid var(--divider-color);
+      border-radius: 14px; }
+    .quiz-paper.show { display: block; }
+    .paper-head { display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; margin-bottom: 18px; padding-bottom: 14px;
+      border-bottom: 1px solid var(--divider-color); }
+    .paper-head h2 { font-size: 1.15rem; margin: 0; }
+    .q-box { padding: 16px 0; border-bottom: 1px dashed var(--divider-color); }
+    .q-box:last-of-type { border-bottom: none; }
+    .q-tag { display: inline-block; font-size: .74rem; letter-spacing: 1px;
+      opacity: .6; margin-bottom: 6px; }
+    .q-text { margin: 0 0 12px; line-height: 1.7; font-weight: 500; }
+    .q-options { display: flex; flex-direction: column; gap: 8px; }
+    .q-opt { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px;
+      border: 1px solid var(--divider-color); border-radius: 9px; cursor: pointer;
+      line-height: 1.6; transition: background .15s, border-color .15s; }
+    .q-opt:hover { border-color: var(--accent-color); background: rgba(128,128,128,.06); }
+    .q-opt input { margin-top: 4px; flex-shrink: 0; }
+    .q-answer { width: 100%; padding: 11px 13px; border-radius: 9px;
+      border: 1px solid var(--divider-color); background: transparent;
+      color: var(--text-primary); font-family: inherit; font-size: .95rem; resize: vertical; }
+    .q-answer:focus { outline: none; border-color: var(--accent-color); }
+    .q-result { margin-top: 10px; font-size: .9rem; line-height: 1.6; }
+    .q-result.ok  { color: #1a7f4b; font-weight: 600; }
+    .q-result.bad { color: #c0392b; font-weight: 600; }
+    .q-result.ref { opacity: .78; }
+    #submit-quiz-btn { margin-top: 18px; }
+    .paper-score { display: none; margin-top: 14px; padding: 13px 16px;
+      border-radius: 10px; background: rgba(128,128,128,.1);
+      font-weight: 600; line-height: 1.6; }
+    .paper-score.show { display: block; }
+    .quiz-card.empty-hint { display: block; opacity: .7; line-height: 1.7; }
+  </style>
+</head>
+<body>
+<div class="app-container">
+
+  <nav class="primary-sidebar">
+    <div class="nav-top-group">
+      <button class="icon-btn" id="sidebar-toggle-btn" title="展開/收合工作區">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <a href="index.html" class="icon-btn" title="主頁">
+        <span class="material-symbols-outlined">home</span>
+      </a>
+      <a href="chat.html" class="icon-btn" title="AI 對話">
+        <span class="material-symbols-outlined">chat</span>
+      </a>
+      <a href="text-page.html" class="icon-btn" title="文字轉譯">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="presentation.html" class="icon-btn" title="智慧簡報">
+        <span class="material-symbols-outlined">slideshow</span>
+      </a>
+      <a href="video-page.html" class="icon-btn" title="影音合成">
+        <span class="material-symbols-outlined">video_library</span>
+      </a>
+      <a href="quiz.html" class="icon-btn active" title="隨堂測驗">
+        <span class="material-symbols-outlined">quiz</span>
+      </a>
+      <a href="forum.html" class="icon-btn" title="知識論壇">
+        <span class="material-symbols-outlined">forum</span>
+      </a>
+    </div>
+    <div class="nav-bottom-group">
+      <button class="icon-btn" title="登出">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="secondary-sidebar" id="main-sidebar">
+    <div class="sidebar-header"><h2>測驗工作區</h2></div>
+    <div class="history-section">
+      <h3 class="section-title">最近活動</h3>
+      <ul class="history-list">
+        <li class="history-item active"><span class="hash">#</span> 機器人學概論</li>
+        <li class="history-item"><span class="hash">#</span> 英語轉譯測試_01</li>
+        <li class="history-item"><span class="hash">#</span> 資工專題演示</li>
+      </ul>
+    </div>
+    <div class="user-profile">
+      <div class="avatar">林</div>
+      <div class="user-info">
+        <div class="user-name">林柔杉</div>
+        <div class="user-status"><span class="status-dot"></span> 已登入</div>
+      </div>
+      <button class="icon-btn settings-btn"><span class="material-symbols-outlined">settings</span></button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <a href="index.html" class="home-btn">
+      <span class="material-symbols-outlined">home</span> 返回主頁
+    </a>
+    <div class="page-header">
+      <h1 class="page-title">智能<span class="highlight-gold">隨堂測驗</span>生成</h1>
+      <p class="page-subtitle">貼上文本或選擇歷史教材，AI 將自動為您萃取重點並生成測驗題。</p>
+    </div>
+    <div class="content-card">
+      <textarea class="main-textarea" id="quiz-textarea" placeholder="例如：請根據『機器人學概論』第一章的內容，生成 5 題單選題與 2 題簡答題..."></textarea>
+      <div class="card-actions">
+        <button class="action-btn outline-btn" id="pick-material-btn">
+          <span class="material-symbols-outlined">library_books</span> 選擇教材
+        </button>
+        <input type="file" id="material-file" accept="application/pdf" hidden>
+        <button class="action-btn solid-btn" id="gen-quiz-btn">開始生成測驗 <span class="material-symbols-outlined">arrow_forward</span></button>
+      </div>
+      <div class="gen-status" id="quiz-status"></div>
+    </div>
+    <div class="divider"><span>最近的測驗紀錄</span></div>
+    <div class="quiz-paper" id="quiz-paper"></div>
+    <div class="quiz-list" id="quiz-list"></div>
+    <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
+  </main>
+
+</div>
+<script src="common.js"></script>
+<script src="eduai.js"></script>
+<script>
+(function () {
+  const textEl   = document.getElementById('quiz-textarea');
+  const genBtn   = document.getElementById('gen-quiz-btn');
+  const pickBtn  = document.getElementById('pick-material-btn');
+  const fileEl   = document.getElementById('material-file');
+  const statusEl = document.getElementById('quiz-status');
+  const listEl   = document.getElementById('quiz-list');
+  const paperEl  = document.getElementById('quiz-paper');
+
+  let currentQuiz = null;   // 作答中的測驗 { id, title, questions }
+
+  function getUser() {
+    try { return JSON.parse(localStorage.getItem('iecs_user') || 'null'); }
+    catch { return null; }
+  }
+
+  function setStatus(msg, loading) {
+    statusEl.className = 'gen-status show';
+    statusEl.innerHTML = (loading ? '<span class="spin"></span>' : '') + msg;
+  }
+
+  // 題目與答案來自 AI 與其他使用者，一律用 textContent 建節點，不用 innerHTML
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  // ── 測驗紀錄列表（從資料庫讀，重新整理不會消失）──
+  async function loadList() {
+    const u = getUser();
+    listEl.textContent = '';
+    if (!u) {
+      listEl.appendChild(el('div', 'quiz-card empty-hint', '請先登入，測驗紀錄與成績會存在你的帳號下。'));
+      return;
+    }
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/quizzes?userId=${u.id}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const quizzes = await r.json();
+      if (!quizzes.length) {
+        listEl.appendChild(el('div', 'quiz-card empty-hint', '尚無測驗紀錄，於上方輸入教材內容或主題即可生成第一份測驗。'));
+        return;
+      }
+      quizzes.forEach(q => {
+        const card = el('div', 'quiz-card');
+        const info = el('div', 'quiz-info');
+        info.appendChild(el('h3', null, q.title));
+        const bits = [`${q.mcCount} 題選擇 + ${q.saCount} 題簡答`];
+        bits.push(q.attemptCount ? `已作答 ${q.attemptCount} 次` : '尚未作答');
+        if (q.bestScore !== null && q.bestScore !== undefined) bits.push(`最佳 ${q.bestScore} 分`);
+        bits.push(new Date(q.createdAt).toLocaleDateString('zh-TW'));
+        info.appendChild(el('p', null, bits.join(' • ')));
+        card.appendChild(info);
+        const btn = el('button', 'action-btn outline-btn', q.attemptCount ? '再測一次' : '開始測驗');
+        btn.addEventListener('click', () => startQuiz(q.id));
+        card.appendChild(btn);
+        listEl.appendChild(card);
+      });
+    } catch (e) {
+      listEl.appendChild(el('div', 'quiz-card empty-hint', '無法載入測驗紀錄：' + e.message + '（請確認網站後端已啟動）'));
+    }
+  }
+
+  // ── 開始作答 ──
+  async function startQuiz(quizId) {
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/quizzes/${quizId}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      currentQuiz = await r.json();
+      renderPaper();
+      paperEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {
+      setStatus('無法載入測驗：' + e.message);
+    }
+  }
+
+  function renderPaper() {
+    paperEl.textContent = '';
+    paperEl.classList.add('show');
+
+    const head = el('div', 'paper-head');
+    head.appendChild(el('h2', null, currentQuiz.title));
+    const closeBtn = el('button', 'action-btn outline-btn', '關閉');
+    closeBtn.addEventListener('click', () => {
+      paperEl.classList.remove('show');
+      paperEl.textContent = '';
+      currentQuiz = null;
+    });
+    head.appendChild(closeBtn);
+    paperEl.appendChild(head);
+
+    currentQuiz.questions.forEach((q, i) => {
+      const box = el('div', 'q-box');
+      box.dataset.qid = q.id;
+      const label = q.questionType === 'single_choice' ? '選擇題' : '簡答題';
+      box.appendChild(el('span', 'q-tag', `${i + 1}. ${label}`));
+      box.appendChild(el('p', 'q-text', q.questionText));
+
+      if (q.questionType === 'single_choice' && q.options.length) {
+        const opts = el('div', 'q-options');
+        q.options.forEach(o => {
+          const lab = el('label', 'q-opt');
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = `q${q.id}`;
+          radio.value = o;
+          lab.appendChild(radio);
+          lab.appendChild(el('span', null, o));
+          opts.appendChild(lab);
+        });
+        box.appendChild(opts);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.className = 'q-answer';
+        ta.rows = 3;
+        ta.placeholder = '寫下你的答案…';
+        box.appendChild(ta);
+      }
+      box.appendChild(el('div', 'q-result'));
+      paperEl.appendChild(box);
+    });
+
+    const submit = el('button', 'action-btn solid-btn', '交卷並批改');
+    submit.id = 'submit-quiz-btn';
+    submit.addEventListener('click', () => submitQuiz(submit));
+    paperEl.appendChild(submit);
+    paperEl.appendChild(el('div', 'paper-score'));
+  }
+
+  async function submitQuiz(btn) {
+    const u = getUser();
+    if (!u) { setStatus('請先登入才能記錄成績。'); return; }
+
+    const answers = [];
+    paperEl.querySelectorAll('.q-box').forEach(box => {
+      const qid = Number(box.dataset.qid);
+      const picked = box.querySelector('input[type=radio]:checked');
+      const ta = box.querySelector('.q-answer');
+      answers.push({ questionId: qid, userAnswer: picked ? picked.value : (ta ? ta.value.trim() : '') });
+    });
+    if (answers.every(a => !a.userAnswer)) { setStatus('至少作答一題再交卷。'); return; }
+
+    btn.disabled = true;
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/quizzes/${currentQuiz.id}/attempts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.id, answers }),
+      });
+      const res = await r.json();
+      if (!r.ok) throw new Error(res.error || `HTTP ${r.status}`);
+
+      const byQid = new Map(res.results.map(x => [x.questionId, x]));
+      paperEl.querySelectorAll('.q-box').forEach(box => {
+        const out = box.querySelector('.q-result');
+        const got = byQid.get(Number(box.dataset.qid));
+        out.textContent = '';
+        if (!got) return;
+        if (got.isCorrect === true) {
+          out.className = 'q-result ok';
+          out.textContent = '✓ 答對了';
+        } else if (got.isCorrect === false) {
+          out.className = 'q-result bad';
+          out.textContent = `✗ 答錯了，正解：${got.correctAnswer}`;
+        } else {
+          // 簡答題沒有客觀對錯，給參考答案讓使用者自行對照
+          out.className = 'q-result ref';
+          out.textContent = `參考答案：${got.correctAnswer}`;
+        }
+      });
+
+      const score = paperEl.querySelector('.paper-score');
+      score.className = 'paper-score show';
+      score.textContent = res.mcTotal
+        ? `選擇題得分 ${res.score} 分（答對 ${res.mcRight} / ${res.mcTotal} 題）。簡答題請自行對照參考答案。`
+        : '本卷只有簡答題，請對照參考答案自我檢核。';
+      setStatus('已交卷，成績已記錄。');
+      loadList();
+    } catch (e) {
+      setStatus('交卷失敗：' + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── 選擇教材 PDF ──
+  pickBtn.addEventListener('click', () => fileEl.click());
+  fileEl.addEventListener('change', async () => {
+    const f = fileEl.files[0];
+    if (!f) return;
+    setStatus('讀取教材中…', true);
+    try {
+      const data = await EduAI.uploadPdf(f);
+      textEl.value = data.content || '';
+      setStatus(`已載入教材「${f.name}」（${textEl.value.length} 字），可直接開始生成測驗。`);
+    } catch (e) {
+      setStatus('教材讀取失敗：' + e.message);
+    }
+  });
+
+  // ── 生成測驗：AI 出題 → 存進資料庫 → 重新載入列表 ──
+  genBtn.addEventListener('click', async () => {
+    const input = textEl.value.trim();
+    if (!input) {
+      setStatus('請先貼上教材內容，或點「選擇教材」上傳 PDF。');
+      return;
+    }
+    const u = getUser();
+    if (!u) { setStatus('請先登入，測驗才能存進你的帳號。'); return; }
+    if (!(await EduAI.isOnline())) {
+      setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
+      return;
+    }
+
+    genBtn.disabled = true;
+    setStatus('AI 出題中…', true);
+    try {
+      const asTopic = input.length <= 40;
+      const quiz = await EduAI.generateQuizJson(
+        asTopic ? input : '', asTopic ? '' : input, 5, 3,
+        (txt) => setStatus(txt, true));
+
+      const title = (asTopic ? input : input.slice(0, 20) + '…') + ' - 隨堂測驗';
+      const r = await fetch(`${API_BASE_URL}/api/quizzes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.id, title, questions: quiz.questions }),
+      });
+      const saved = await r.json();
+      if (!r.ok) throw new Error(saved.error || `HTTP ${r.status}`);
+
+      setStatus(`已生成並儲存「${title}」（共 ${saved.questionCount} 題），可直接開始作答。`);
+      await loadList();
+      startQuiz(saved.id);
+    } catch (e) {
+      setStatus('生成失敗：' + e.message);
+    } finally {
+      genBtn.disabled = false;
+    }
+  });
+
+  loadList();
+  EduAI.isOnline().then(ok => {
+    if (!ok) setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
+  });
+})();
+</script>
+</body>
+</html>

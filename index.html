@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 智慧教材生成系統 | 智慧學習導航</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="Style.css">
+</head>
+<body>
+<div class="app-container">
+
+  <nav class="primary-sidebar">
+    <div class="nav-top-group">
+      <button class="icon-btn" id="sidebar-toggle-btn" title="展開/收合工作區">
+        <span class="material-symbols-outlined">menu</span>
+      </button>
+      <a href="index.html" class="icon-btn active" title="主頁">
+        <span class="material-symbols-outlined">home</span>
+      </a>
+      <a href="chat.html" class="icon-btn" title="AI 對話">
+        <span class="material-symbols-outlined">chat</span>
+      </a>
+      <a href="text-page.html" class="icon-btn" title="文字轉譯">
+        <span class="material-symbols-outlined">description</span>
+      </a>
+      <a href="presentation.html" class="icon-btn" title="智慧簡報">
+        <span class="material-symbols-outlined">slideshow</span>
+      </a>
+      <a href="video-page.html" class="icon-btn" title="影音合成">
+        <span class="material-symbols-outlined">video_library</span>
+      </a>
+      <a href="quiz.html" class="icon-btn" title="隨堂測驗">
+        <span class="material-symbols-outlined">quiz</span>
+      </a>
+      <a href="forum.html" class="icon-btn" title="知識論壇">
+        <span class="material-symbols-outlined">forum</span>
+      </a>
+    </div>
+    <div class="nav-bottom-group">
+      <button class="icon-btn" title="登出">
+        <span class="material-symbols-outlined">logout</span>
+      </button>
+    </div>
+  </nav>
+
+  <aside class="secondary-sidebar" id="main-sidebar">
+    <div class="sidebar-header"><h2>系統工作區</h2></div>
+    <div class="history-section">
+      <h3 class="section-title">最近活動</h3>
+      <ul class="history-list">
+        <li class="history-item active"><span class="hash">#</span> 機器人學概論</li>
+        <li class="history-item"><span class="hash">#</span> 英語轉譯測試_01</li>
+        <li class="history-item"><span class="hash">#</span> 資工專題演示</li>
+      </ul>
+    </div>
+    <div class="user-profile">
+      <div class="avatar">林</div>
+      <div class="user-info">
+        <div class="user-name">林柔杉</div>
+        <div class="user-status"><span class="status-dot"></span> 已登入</div>
+      </div>
+      <button class="icon-btn settings-btn"><span class="material-symbols-outlined">settings</span></button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="hero-section">
+      <h1 class="main-title">開始您的<span class="highlight">智慧學習導航</span></h1>
+      <p class="subtitle">輸入學習主題或上傳教材，AI 將自動生成同步的講義、簡報與影音內容。</p>
+    </div>
+
+    <!-- 區塊 A：模式選擇 -->
+    <section class="mode-select-container" id="block-mode-select">
+      <p class="mode-select-label">您今天想怎麼開始？</p>
+      <div class="mode-cards">
+        <div class="mode-card" data-mode="upload">
+          <div class="mode-card-icon"><span class="material-symbols-outlined">upload_file</span></div>
+          <div class="mode-card-text">
+            <h3>我有講義要上傳</h3>
+            <p>上傳 PDF 或文字教材，AI 幫您轉換成多種格式</p>
+          </div>
+          <span class="material-symbols-outlined mode-card-arrow">arrow_forward</span>
+        </div>
+        <div class="mode-card" data-mode="guide">
+          <div class="mode-card-icon"><span class="material-symbols-outlined">auto_stories</span></div>
+          <div class="mode-card-text">
+            <h3>我想學一個新主題</h3>
+            <p>告訴我您想學什麼，AI 引導您建立專屬教材</p>
+          </div>
+          <span class="material-symbols-outlined mode-card-arrow">arrow_forward</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 區塊 B：引導問答 -->
+    <section class="guide-container js-hidden" id="block-guide">
+      <div class="guide-steps-bar">
+        <div class="guide-step active" id="step-dot-1"><div class="step-dot">1</div><span>學習主題</span></div>
+        <div class="step-line"></div>
+        <div class="guide-step" id="step-dot-2"><div class="step-dot">2</div><span>學習程度</span></div>
+        <div class="step-line"></div>
+        <div class="guide-step" id="step-dot-3"><div class="step-dot">3</div><span>輸出格式</span></div>
+      </div>
+      <div class="guide-step-content" id="guide-step-1">
+        <h2 class="guide-question">您想學習什麼主題？</h2>
+        <p class="guide-hint">可以輸入任何科目、技能或感興趣的領域</p>
+        <input type="text" class="guide-input" id="input-topic" placeholder="例如：Python 程式設計、日文基礎、機器學習概論..." />
+        <div class="guide-suggestions">
+          <span class="suggestion-chip" data-topic="Python 程式設計基礎">Python 程式設計</span>
+          <span class="suggestion-chip" data-topic="機器學習入門">機器學習</span>
+          <span class="suggestion-chip" data-topic="日文基礎對話">日文基礎</span>
+          <span class="suggestion-chip" data-topic="資料結構與演算法">資料結構</span>
+        </div>
+        <div class="guide-nav">
+          <button class="guide-back-btn" data-back="mode-select"><span class="material-symbols-outlined">arrow_back</span> 返回</button>
+          <button class="guide-next-btn" data-next-step="2">下一步 <span class="material-symbols-outlined">arrow_forward</span></button>
+        </div>
+      </div>
+      <div class="guide-step-content js-hidden" id="guide-step-2">
+        <h2 class="guide-question">您目前的程度是？</h2>
+        <p class="guide-hint">AI 會根據您的程度調整教材的深度與用詞</p>
+        <div class="level-options">
+          <div class="level-card" data-level="初學者"><span class="material-symbols-outlined">sentiment_satisfied</span><h4>初學者</h4><p>完全沒有基礎，從零開始</p></div>
+          <div class="level-card" data-level="中階"><span class="material-symbols-outlined">trending_up</span><h4>中階</h4><p>有基本概念，想深入學習</p></div>
+          <div class="level-card" data-level="進階"><span class="material-symbols-outlined">workspace_premium</span><h4>進階</h4><p>已有經驗，想系統化整理</p></div>
+        </div>
+        <div class="guide-nav">
+          <button class="guide-back-btn" data-back-step="1"><span class="material-symbols-outlined">arrow_back</span> 返回</button>
+          <button class="guide-next-btn" data-next-step="3">下一步 <span class="material-symbols-outlined">arrow_forward</span></button>
+        </div>
+      </div>
+      <div class="guide-step-content js-hidden" id="guide-step-3">
+        <h2 class="guide-question">您希望生成什麼格式的教材？</h2>
+        <p class="guide-hint">可以複選，AI 會同時生成多種格式</p>
+        <div class="format-options">
+          <div class="format-card" data-format="文字講義"><span class="material-symbols-outlined">description</span><h4>文字講義</h4><p>含中英對照的結構化講義</p></div>
+          <div class="format-card" data-format="智慧簡報"><span class="material-symbols-outlined">slideshow</span><h4>智慧簡報</h4><p>可匯出的 PPT 投影片</p></div>
+          <div class="format-card" data-format="影音教材"><span class="material-symbols-outlined">video_library</span><h4>影音教材</h4><p>同步語音的動態演示影片</p></div>
+        </div>
+        <div class="guide-nav">
+          <button class="guide-back-btn" data-back-step="2"><span class="material-symbols-outlined">arrow_back</span> 返回</button>
+          <button class="guide-next-btn guide-finish-btn">開始生成 <span class="material-symbols-outlined">auto_awesome</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 區塊 C：輸入框 -->
+    <section class="core-input-container js-hidden" id="block-input">
+      <button class="input-back-btn" data-back="mode-select"><span class="material-symbols-outlined">arrow_back</span> 重新選擇</button>
+      <div class="prompt-box">
+        <textarea id="main-textarea" placeholder="例如：我想學韓文基礎對話，並生成中英對照講義..."></textarea>
+        <div class="prompt-actions">
+          <button class="upload-btn"><span class="material-symbols-outlined">upload_file</span> 上傳講義/PDF</button>
+          <button class="generate-main-btn">開始分析與生成 <span class="material-symbols-outlined">arrow_forward</span></button>
+        </div>
+      </div>
+    </section>
+
+    <div class="quick-tools-header"><span>或者使用快速工具</span></div>
+    <div class="cards-container">
+      <a href="text-page.html" class="feature-card">
+        <div class="card-icon-wrapper"><span class="material-symbols-outlined">description</span></div>
+        <div class="card-text"><h3>文字轉譯</h3><p>純文字教材與中英對照</p></div>
+      </a>
+      <a href="presentation.html" class="feature-card">
+        <div class="card-icon-wrapper"><span class="material-symbols-outlined">slideshow</span></div>
+        <div class="card-text"><h3>智慧簡報</h3><p>結構化大綱與 PPT 導出</p></div>
+      </a>
+      <a href="video-page.html" class="feature-card">
+        <div class="card-icon-wrapper"><span class="material-symbols-outlined">video_library</span></div>
+        <div class="card-text"><h3>影音合成</h3><p>同步語音與動態演示影片</p></div>
+      </a>
+    </div>
+    <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
+  </main>
+
+</div>
+<script src="common.js"></script>
+<script src="eduai.js"></script>
+<script src="index.js"></script>
+</body>
+</html>

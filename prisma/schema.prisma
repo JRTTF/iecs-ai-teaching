@@ -1,0 +1,191 @@
+// SQLite 不支援原生 enum 和 Json 型態：
+// - enum 欄位以 String 註記合法值
+// - Json 欄位（options、tags）改存 JSON.stringify() 過的字串
+// 之後若切換到 PostgreSQL（datasource provider 改 "postgresql"），這兩類欄位都可以改回原生型態。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  account      String    @unique
+  passwordHash String
+  role         String // "student" | "teacher"
+  realName     String
+  nickname     String
+  schoolName   String
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  materials     Material[]
+  quizzes       Quiz[]
+  quizAttempts  QuizAttempt[]
+  forumPosts    ForumPost[]
+  forumComments ForumComment[]
+  forumLikes    ForumLike[]
+
+  @@map("users")
+}
+
+model Material {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  title         String
+  sourceType    String // "upload" | "topic_guide"
+  topic         String?
+  level         String? // "beginner" | "intermediate" | "advanced"
+  sourceFileUrl String?
+  status        String   @default("pending") // "pending" | "processing" | "done" | "failed"
+  createdAt     DateTime @default(now())
+
+  user    User             @relation(fields: [userId], references: [id])
+  outputs MaterialOutput[]
+  quizzes Quiz[]
+
+  @@map("materials")
+}
+
+model MaterialOutput {
+  id          Int      @id @default(autoincrement())
+  materialId  Int
+  formatType  String // "text" | "presentation" | "video"
+  contentText String?
+  fileUrl     String?
+  createdAt   DateTime @default(now())
+
+  material Material            @relation(fields: [materialId], references: [id])
+  slides   PresentationSlide[]
+  captions VideoCaption[]
+
+  @@map("material_outputs")
+}
+
+model PresentationSlide {
+  id         Int     @id @default(autoincrement())
+  outputId   Int
+  orderIndex Int
+  title      String
+  content    String?
+
+  output MaterialOutput @relation(fields: [outputId], references: [id])
+
+  @@map("presentation_slides")
+}
+
+model VideoCaption {
+  id           Int     @id @default(autoincrement())
+  outputId     Int
+  orderIndex   Int
+  startTime    String
+  captionText  String
+  segmentLabel String?
+
+  output MaterialOutput @relation(fields: [outputId], references: [id])
+
+  @@map("video_captions")
+}
+
+model Quiz {
+  id         Int      @id @default(autoincrement())
+  materialId Int?
+  userId     Int
+  title      String
+  createdAt  DateTime @default(now())
+
+  material  Material?      @relation(fields: [materialId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            Int     @id @default(autoincrement())
+  quizId        Int
+  questionType  String // "single_choice" | "fill_blank" | "short_answer"
+  questionText  String
+  options       String? // SQLite 無原生 JSON 型態，存 JSON.stringify() 過的字串，讀取時再 JSON.parse()
+  correctAnswer String
+  orderIndex    Int
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id])
+  answers QuizAnswer[]
+
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id          Int      @id @default(autoincrement())
+  quizId      Int
+  userId      Int
+  score       Float?
+  submittedAt DateTime @default(now())
+
+  quiz    Quiz         @relation(fields: [quizId], references: [id])
+  user    User         @relation(fields: [userId], references: [id])
+  answers QuizAnswer[]
+
+  @@map("quiz_attempts")
+}
+
+model QuizAnswer {
+  id         Int      @id @default(autoincrement())
+  attemptId  Int
+  questionId Int
+  userAnswer String
+  isCorrect  Boolean?
+
+  attempt  QuizAttempt  @relation(fields: [attemptId], references: [id])
+  question QuizQuestion @relation(fields: [questionId], references: [id])
+
+  @@map("quiz_answers")
+}
+
+model ForumPost {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String
+  content   String
+  tags      String // SQLite 無原生 JSON 型態，存 JSON.stringify() 過的字串，讀取時再 JSON.parse()
+  createdAt DateTime @default(now())
+
+  user     User           @relation(fields: [userId], references: [id])
+  comments ForumComment[]
+  likes    ForumLike[]
+
+  @@map("forum_posts")
+}
+
+model ForumComment {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  userId    Int
+  content   String
+  createdAt DateTime @default(now())
+
+  post ForumPost @relation(fields: [postId], references: [id])
+  user User      @relation(fields: [userId], references: [id])
+
+  @@map("forum_comments")
+}
+
+model ForumLike {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  post ForumPost @relation(fields: [postId], references: [id])
+  user User      @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("forum_likes")
+}
