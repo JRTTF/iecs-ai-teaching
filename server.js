@@ -362,6 +362,14 @@ app.post('/api/materials', async (req, res) => {
     return res.status(400).json({ error: '缺少 userId 或 title。' });
   }
   try {
+    // 同一個人、同一主題只建一筆：講義／簡報／影片都掛在它底下，資料庫才不會一個主題散成三筆
+    if (topic) {
+      const existing = await prisma.material.findFirst({
+        where: { userId: Number(userId), topic: String(topic) },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existing) return res.json(publicMaterial(existing));
+    }
     const material = await prisma.material.create({
       data: {
         userId: Number(userId),
@@ -507,7 +515,8 @@ app.post('/api/quizzes', async (req, res) => {
         title: String(title).slice(0, 200),
         questions: {
           create: questions.map((q, i) => ({
-            questionType: q.questionType === 'short_answer' ? 'short_answer' : 'single_choice',
+            // 開放題分簡答（short_answer）與問答（essay）；兩者都不自動批改
+            questionType: ['short_answer', 'essay', 'fill_blank'].includes(q.questionType) ? q.questionType : 'single_choice',
             questionText: String(q.questionText || '').slice(0, 2000),
             // SQLite 沒有 JSON 型態，選項存成 JSON 字串（schema 註解就是這樣寫的）
             options: Array.isArray(q.options) && q.options.length ? JSON.stringify(q.options) : null,
@@ -545,6 +554,7 @@ app.get('/api/quizzes', async (req, res) => {
       createdAt: q.createdAt,
       mcCount: q.questions.filter(x => x.questionType === 'single_choice').length,
       saCount: q.questions.filter(x => x.questionType === 'short_answer').length,
+      essayCount: q.questions.filter(x => x.questionType === 'essay').length,
       attemptCount: q.attempts.length,
       bestScore: scores.length ? Math.max(...scores) : null,
     };
@@ -670,6 +680,86 @@ app.get(/^\/[^/]+$/, (req, res, next) => {
     return next();
   }
   res.sendFile(full);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  歷史紀錄：把生成的檔案本體存下來，側欄「最近活動」才能真的重開
+//
+//  資料表只存了標題／字幕，簡報 HTML 與影片 MP4 原本只留在瀏覽器記憶體，
+//  關掉分頁就沒了。這裡把檔案存到 uploads/outputs/，路徑寫進
+//  material_outputs.fileUrl（schema 本來就留了這個欄位）。
+// ═══════════════════════════════════════════════════════════
+const OUTPUT_DIR = path.join(UPLOAD_DIR, 'outputs');
+fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+
+const outputUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, OUTPUT_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+      cb(null, `output-${req.params.id}-${Date.now()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 60 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ok = ['.html', '.mp4', '.pptx', '.txt', '.md'].includes(path.extname(file.originalname || '').toLowerCase());
+    cb(ok ? null : new Error('UNSUPPORTED_TYPE'), ok);
+  },
+});
+
+/** 把生成檔案掛到既有的 output 上。 */
+app.post('/api/outputs/:id/file', (req, res) => {
+  outputUpload.single('file')(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.message === 'UNSUPPORTED_TYPE' ? '不支援的檔案類型。' : '檔案上傳失敗。' });
+    if (!req.file) return res.status(400).json({ error: '沒有收到檔案。' });
+    try {
+      const fileUrl = `/uploads/outputs/${req.file.filename}`;
+      await prisma.materialOutput.update({ where: { id: Number(req.params.id) }, data: { fileUrl } });
+      res.json({ id: Number(req.params.id), fileUrl });
+    } catch {
+      res.status(404).json({ error: '找不到這筆生成結果。' });
+    }
+  });
+});
+
+/** 單筆生成結果，給「重開」用。 */
+app.get('/api/outputs/:id', async (req, res) => {
+  const o = await prisma.materialOutput.findUnique({
+    where: { id: Number(req.params.id) },
+    include: {
+      material: { select: { id: true, title: true, topic: true, level: true } },
+      slides: { orderBy: { orderIndex: 'asc' } },
+      captions: { orderBy: { orderIndex: 'asc' } },
+    },
+  });
+  if (!o) return res.status(404).json({ error: '找不到這筆生成結果。' });
+  res.json({
+    id: o.id, formatType: o.formatType, contentText: o.contentText, fileUrl: o.fileUrl,
+    createdAt: o.createdAt, material: o.material, slides: o.slides, captions: o.captions,
+  });
+});
+
+/** 最近活動：教材輸出 + 測驗合併、新到舊。側欄每頁都會叫，回傳保持精簡。 */
+app.get('/api/history', async (req, res) => {
+  const userId = Number(req.query.userId);
+  if (!userId) return res.status(400).json({ error: '缺少 userId。' });
+  const [outputs, quizzes] = await Promise.all([
+    prisma.materialOutput.findMany({
+      where: { material: { userId } },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+      include: { material: { select: { id: true, title: true, topic: true } } },
+    }),
+    prisma.quiz.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 30 }),
+  ]);
+  const items = [
+    ...outputs.map(o => ({
+      kind: o.formatType, title: o.material.title, createdAt: o.createdAt,
+      materialId: o.material.id, outputId: o.id, fileUrl: o.fileUrl, hasText: !!o.contentText,
+    })),
+    ...quizzes.map(q => ({ kind: 'quiz', title: q.title, createdAt: q.createdAt, quizId: q.id })),
+  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 60);
+  res.json(items);
 });
 
 const PORT = process.env.PORT || 4000;

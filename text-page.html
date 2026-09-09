@@ -217,6 +217,21 @@
 
   // ── 載入：從首頁引導流程取得主題，自動生成講義 ──
   (async function init() {
+    // 從「最近活動」重開：直接顯示存在資料庫裡的講義全文，追問也接得上
+    const reopenId = new URLSearchParams(location.search).get('output');
+    if (reopenId) {
+      try {
+        const r = await fetch(`${API_BASE_URL}/api/outputs/${reopenId}`);
+        if (!r.ok) throw new Error('找不到這份講義紀錄');
+        const o = await r.json();
+        topic = (o.material && o.material.topic) || '講義';
+        lastText = o.contentText || '';
+        renderText(lastText);
+        history = [{ role: 'user', content: `請講解「${topic}」` }, { role: 'assistant', content: lastText }];
+        setStatus(`已重新開啟「${topic}」（${new Date(o.createdAt).toLocaleString('zh-TW')} 生成），可繼續追問。`);
+      } catch (e) { setStatus(e.message); }
+      return;
+    }
     const guide = EduAIGuide.load();
     topic = guide && guide.topic ? guide.topic : '';
     if (!topic) return;   // 沒主題就維持原本提示
@@ -233,6 +248,8 @@
                      `包含定義、原理說明與具體例子，使用台灣繁體中文。`;
       lastText = await EduAI.chat(prompt, guide.content || '');
       renderText(lastText);
+      // 講義全文寫進 material_outputs.contentText
+      EduAIStore.saveOutput({ topic, level: guide.level, formatType: 'text', contentText: lastText });
       // 講義本身也算一輪對話，之後追問才接得上前文
       history = [{ role: 'user', content: prompt },
                  { role: 'assistant', content: lastText }];

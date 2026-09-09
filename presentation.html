@@ -22,6 +22,15 @@
     .gen-bar.show { display: block; }
     .gen-bar > span { display: block; height: 100%; width: 0; border-radius: 3px;
       background: var(--accent-color); transition: width .6s ease; }
+    /* ── 修改這一頁：生成後可用自然語言反覆修改單張投影片 ── */
+    .edit-bar { display: none; gap: 10px; align-items: flex-start; margin: 14px 0 0;
+      width: 100%; max-width: 980px; }
+    .edit-bar.show { display: flex; }
+    .edit-bar textarea { flex: 1; min-height: 46px; max-height: 140px; padding: 11px 14px;
+      border-radius: 10px; border: 1px solid var(--divider-color); background: var(--bg-card);
+      color: var(--text-primary); font-family: inherit; font-size: .95rem; resize: vertical; }
+    .edit-bar textarea:focus { outline: none; border-color: var(--accent-color); }
+    .edit-bar .edit-hint { font-size: .78rem; opacity: .6; margin: 6px 0 0; width: 100%; }
   </style>
 </head>
 <body>
@@ -98,6 +107,13 @@
       <button class="upload-btn" id="next-btn">下一步 <span class="material-symbols-outlined">chevron_right</span></button>
       <button class="generate-main-btn" id="pptx-btn"><span class="material-symbols-outlined">download</span> 導出 PPTX</button>
     </div>
+    <div class="edit-bar" id="edit-bar">
+      <textarea id="edit-input" placeholder="要怎麼改目前這一頁？例如：加一個真實例子、把第二點講清楚一點、標題改短一點"></textarea>
+      <button class="generate-main-btn btn-compact" id="edit-btn">
+        <span class="material-symbols-outlined icon-18">auto_fix_high</span> 修改這一頁
+      </button>
+    </div>
+    <p class="edit-hint" id="edit-hint" hidden>只會改目前顯示的這一頁，其他頁保留；改完會直接更新預覽，可以一直改到滿意為止。</p>
     <div class="quick-tools-header"><span>投影片縮圖預覽</span></div>
     <div class="slide-thumb-container" id="thumb-container"></div>
     <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
@@ -124,6 +140,10 @@
   const prevBtn   = document.getElementById('prev-btn');
   const nextBtn   = document.getElementById('next-btn');
   const pptxBtn   = document.getElementById('pptx-btn');
+  const editBar   = document.getElementById('edit-bar');
+  const editInput = document.getElementById('edit-input');
+  const editBtn   = document.getElementById('edit-btn');
+  const editHint  = document.getElementById('edit-hint');
 
   let slideUrl = '';
   let titles   = [];
@@ -138,11 +158,69 @@
     prevBtn.disabled = !on;
     nextBtn.disabled = !on;
     pptxBtn.disabled = !on;
+    editBtn.disabled = !on || !presId;
+    editBar.classList.toggle('show', on && !!presId);   // 有簡報且引擎記得它才顯示修改列
+    editHint.hidden = !(on && presId);
   }
+
+  // ── 修改目前這一頁：叫後端只改這一張，換掉預覽後停在同一頁 ──
+  async function editCurrentSlide() {
+    const instruction = editInput.value.trim();
+    if (!instruction || !presId) return;
+    if (!(await EduAI.isOnline())) { subtitle.textContent = eduaiOfflineMessage(); return; }
+    const keep = cur;
+    setControlsEnabled(false);
+    editBar.classList.add('show');   // 停用期間仍顯示，讓使用者看得到自己打的字
+    subtitle.textContent = `正在修改第 ${keep + 1} 頁…（只改這一頁，約 10-30 秒）`;
+    try {
+      const r = await EduAI.editSlide(presId, keep, instruction);
+      slideUrl = r.url;
+      // 新版 HTML 載入完成後再跳回原本那一頁，否則 show() 會叫不到
+      frame.onload = () => { frame.onload = null; showPage(keep); };
+      frame.src = slideUrl;
+      const info = await EduAI.presentationInfo(presId);
+      titles = info.titles || titles;
+      renderOutline();
+      editInput.value = '';
+      subtitle.textContent = `第 ${keep + 1} 頁已更新，可以繼續修改其他頁或匯出。`;
+      // 修改後的版本也存一份，資料庫裡看得到每一版
+      EduAIStore.saveOutput({ topic, formatType: 'presentation',
+        slides: titles.map((t, i) => ({ orderIndex: i, title: t })),
+        contentText: `pres:${presId}`,
+        blob: r.blob, filename: `${topic}.html` });
+    } catch (e) {
+      subtitle.textContent = '修改失敗：' + e.message;
+    } finally {
+      setControlsEnabled(true);
+      showPage(keep);
+    }
+  }
+  editBtn.addEventListener('click', editCurrentSlide);
+  editInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editCurrentSlide(); }
+  });
   setControlsEnabled(false);
 
   // 切換到第 i 頁：優先直接呼叫簡報內的 show()，失敗才退回 hash 導航
+  // 除錯用：網址帶 ?debug=1 時，把每次換頁的呼叫來源與離開頁面的事件記進 sessionStorage（導頁後還在）
+  const DEBUG = new URLSearchParams(location.search).has('debug');
+  function dlog(kind, extra) {
+    if (!DEBUG) return;
+    try {
+      const arr = JSON.parse(sessionStorage.getItem('__pdbg') || '[]');
+      const st = (new Error().stack || '').split(String.fromCharCode(10)).slice(2, 4).join(' <- ').replace(/https?:[^ )]+\//g, '');
+      arr.push([new Date().toTimeString().slice(3, 8), kind, String(extra), st]);
+      sessionStorage.setItem('__pdbg', JSON.stringify(arr.slice(-60)));
+    } catch {}
+  }
+  if (DEBUG) {
+    window.addEventListener('pagehide', () => dlog('pagehide', location.href));
+    const _confirm = window.confirm;
+    window.confirm = (m) => { dlog('confirm', m); return _confirm(m); };
+  }
+
   function showPage(i) {
+    dlog('showPage', `i=${i} cur=${cur} n=${titles.length}`);
     if (!titles.length) return;
     cur = (i + titles.length) % titles.length;
     try {
@@ -200,8 +278,47 @@
     }
   });
 
+  // ── 從「最近活動」重開：載入存在伺服器上的簡報檔，不重新生成 ──
+  async function reopenFromHistory(outputId) {
+    const r = await fetch(`${API_BASE_URL}/api/outputs/${outputId}`);
+    if (!r.ok) throw new Error('找不到這份簡報紀錄');
+    const o = await r.json();
+    if (!o.fileUrl) throw new Error('這份紀錄沒有保存簡報檔（較早版本生成的）');
+    topic = (o.material && o.material.topic) || o.material.title || '簡報';
+    titles = (o.slides || []).map(s => s.title);
+    slideUrl = `${API_BASE_URL}${o.fileUrl}`;
+    frame.src = slideUrl;
+    preview.classList.remove('is-empty');
+    renderOutline();
+    pageInd.textContent = `1 / ${titles.length}`;
+    setControlsEnabled(true);
+    const when = new Date(o.createdAt).toLocaleString('zh-TW');
+    // AI 引擎重啟前都還記得這份簡報：接回 pres_id，「修改這一頁」就能繼續用
+    presId = '';
+    const m = /^pres:(\w+)$/.exec(o.contentText || '');
+    if (m && (await EduAI.isOnline())) {
+      try {
+        const info = await EduAI.presentationInfo(m[1]);
+        if (info && info.titles) { presId = m[1]; titles = info.titles; renderOutline(); }
+      } catch { /* 引擎已重啟、不記得了 → 只能看與匯出 */ }
+    }
+    setControlsEnabled(true);   // presId 已定案，重新決定修改列要不要顯示
+    if (presId) {
+      subtitle.textContent = `已重新開啟「${topic}」（${when} 生成），可以繼續修改或匯出。`;
+    } else {
+      editBar.classList.remove('show'); editHint.hidden = true;
+      subtitle.textContent = `已重新開啟「${topic}」（${when} 生成）。AI 引擎已重啟、不再保有這份簡報，可瀏覽與匯出；要修改內容請重新生成。`;
+    }
+  }
+
   // ── 載入：從首頁引導流程取得主題，自動生成簡報 ──
   (async function init() {
+    const reopenId = new URLSearchParams(location.search).get('output');
+    if (reopenId) {
+      try { await reopenFromHistory(reopenId); }
+      catch (e) { preview.classList.add('is-empty'); setMsg('無法開啟'); subtitle.textContent = e.message; }
+      return;
+    }
     const guide = EduAIGuide.load();
     topic = guide && guide.topic ? guide.topic : '';
 
@@ -241,6 +358,11 @@
         titles = info.titles || [];
         renderOutline();
         pageInd.textContent = `1 / ${titles.length}`;
+        // 寫進資料庫（materials + presentation_slides），沒登入會自動略過
+        EduAIStore.saveOutput({ topic, level: guide && guide.level, formatType: 'presentation',
+          slides: titles.map((t, i) => ({ orderIndex: i, title: t })),
+          contentText: `pres:${presId}`,   // 重開時用它問 AI 引擎還記不記得這份簡報
+          blob: result.blob, filename: `${topic}.html` });
         subtitle.textContent = `AI 已為您生成 ${titles.length} 頁投影片，您可以進行編輯或直接匯出。`;
         setControlsEnabled(true);
       }

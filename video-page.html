@@ -179,8 +179,27 @@
     a.click();
   });
 
+  // ── 從「最近活動」重開：直接播放存在伺服器上的影片 ──
+  async function reopenFromHistory(outputId) {
+    const r = await fetch(`${API_BASE_URL}/api/outputs/${outputId}`);
+    if (!r.ok) throw new Error('找不到這支影片紀錄');
+    const o = await r.json();
+    if (!o.fileUrl) throw new Error('這份紀錄沒有保存影片檔（較早版本生成的）');
+    topic = (o.material && o.material.topic) || '教學影片';
+    videoUrl = `${API_BASE_URL}${o.fileUrl}`;
+    player.src = videoUrl;
+    container.classList.add('has-video');
+    renderTimeline((o.captions || []).map(c => ({ start: Number(c.startTime), text: c.captionText, title: c.segmentLabel })));
+    setStatus(`已重新開啟「${topic}」（${new Date(o.createdAt).toLocaleString('zh-TW')} 生成）。`);
+  }
+
   // ── 載入：從首頁引導流程取得主題，自動生成影片 ──
   (async function init() {
+    const reopenId = new URLSearchParams(location.search).get('output');
+    if (reopenId) {
+      try { await reopenFromHistory(reopenId); } catch (e) { setStatus(e.message); }
+      return;
+    }
     const guide = EduAIGuide.load();
     topic = guide && guide.topic ? guide.topic : '';
 
@@ -209,6 +228,11 @@
       container.classList.add('has-video');
       renderTimeline(r.timeline || []);
       setStatus('影片生成完成，可直接播放或下載。');
+      // 字幕時間軸寫進 video_captions（影片檔本身留在瀏覽器，資料庫存的是內容）
+      EduAIStore.saveOutput({ topic, level: guide && guide.level, formatType: 'video',
+        captions: (r.timeline || []).map((t, i) => ({ orderIndex: i, startTime: String(t.start),
+          captionText: t.text || '', segmentLabel: t.title || null })),
+        blob: r.blob, filename: `${topic}.mp4` });
       if (subtitle) subtitle.textContent = 'AI 已為您的教材配製同步語音與動態演示。';
     } catch (e) {
       setStatus('影片生成失敗：' + e.message);

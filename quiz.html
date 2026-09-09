@@ -189,7 +189,10 @@
         const card = el('div', 'quiz-card');
         const info = el('div', 'quiz-info');
         info.appendChild(el('h3', null, q.title));
-        const bits = [`${q.mcCount} 題選擇 + ${q.saCount} 題簡答`];
+        const parts = [`${q.mcCount} 題選擇`];
+        if (q.saCount) parts.push(`${q.saCount} 題簡答`);
+        if (q.essayCount) parts.push(`${q.essayCount} 題問答`);
+        const bits = [parts.join(' + ')];
         bits.push(q.attemptCount ? `已作答 ${q.attemptCount} 次` : '尚未作答');
         if (q.bestScore !== null && q.bestScore !== undefined) bits.push(`最佳 ${q.bestScore} 分`);
         bits.push(new Date(q.createdAt).toLocaleDateString('zh-TW'));
@@ -236,7 +239,7 @@
     currentQuiz.questions.forEach((q, i) => {
       const box = el('div', 'q-box');
       box.dataset.qid = q.id;
-      const label = q.questionType === 'single_choice' ? '選擇題' : '簡答題';
+      const label = { single_choice: '選擇題', short_answer: '簡答題', essay: '問答題' }[q.questionType] || '題目';
       box.appendChild(el('span', 'q-tag', `${i + 1}. ${label}`));
       box.appendChild(el('p', 'q-text', q.questionText));
 
@@ -256,8 +259,9 @@
       } else {
         const ta = document.createElement('textarea');
         ta.className = 'q-answer';
-        ta.rows = 3;
-        ta.placeholder = '寫下你的答案…';
+        // 問答題要寫得長，框給大一點
+        ta.rows = q.questionType === 'essay' ? 7 : 3;
+        ta.placeholder = q.questionType === 'essay' ? '請完整說明，建議 6-8 句…' : '寫下你的答案…';
         box.appendChild(ta);
       }
       box.appendChild(el('div', 'q-result'));
@@ -317,7 +321,7 @@
       score.className = 'paper-score show';
       score.textContent = res.mcTotal
         ? `選擇題得分 ${res.score} 分（答對 ${res.mcRight} / ${res.mcTotal} 題）。簡答題請自行對照參考答案。`
-        : '本卷只有簡答題，請對照參考答案自我檢核。';
+        : '本卷只有開放題，請對照參考答案自我檢核。';
       setStatus('已交卷，成績已記錄。');
       loadList();
     } catch (e) {
@@ -361,7 +365,7 @@
     try {
       const asTopic = input.length <= 40;
       const quiz = await EduAI.generateQuizJson(
-        asTopic ? input : '', asTopic ? '' : input, 5, 3,
+        asTopic ? input : '', asTopic ? '' : input, 5, 5,
         (txt) => setStatus(txt, true));
 
       const title = (asTopic ? input : input.slice(0, 20) + '…') + ' - 隨堂測驗';
@@ -383,7 +387,11 @@
     }
   });
 
-  loadList();
+  loadList().then(() => {
+    // 從「最近活動」點進來：直接開那份測驗
+    const qid = new URLSearchParams(location.search).get('quiz');
+    if (qid) startQuiz(Number(qid));
+  });
   EduAI.isOnline().then(ok => {
     if (!ok) setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
   });

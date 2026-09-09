@@ -69,12 +69,27 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8000
 | `eduai.js` | 橋接層：前端呼叫 AI 引擎的唯一入口 |
 | `common.js` | 登入狀態、使用者資料、共用 UI |
 | `index.html` / `index.js` | 首頁與引導流程（選主題 → 跳到功能頁自動生成） |
-| `presentation.html` | 智慧簡報（可匯出 PPTX，能匯入 Canva） |
+| `presentation.html` | 智慧簡報：生成後可用自然語言「修改這一頁」反覆調整，可匯出 PPTX（能匯入 Canva） |
 | `video-page.html` | 影音合成（含字幕時間軸） |
-| `quiz.html` | 隨堂測驗：頁內作答、自動批改、成績存資料庫 |
+| `quiz.html` | 隨堂測驗：AI 出題 → 頁內作答 → 自動批改 → 成績存資料庫（需登入） |
 | `chat.html` | 日常對話（可掛教材） |
 | `forum.html` | 知識論壇 |
 | `prisma/schema.prisma` | 資料庫結構（12 張表） |
+
+## 資料怎麼存
+
+登入後，AI 生成的東西會寫進 SQLite（`prisma/dev.db`）：
+
+| 你做的事 | 寫進哪張表 |
+|---|---|
+| 生成講義 | `materials` + `material_outputs.contentText` |
+| 生成／修改簡報 | `materials` + `material_outputs` + `presentation_slides`（每次修改都留一版） |
+| 生成影片 | `materials` + `material_outputs` + `video_captions`（字幕時間軸） |
+| 生成測驗 | `quizzes` + `quiz_questions` |
+| 交卷 | `quiz_attempts` + `quiz_answers`（選擇題自動批改，簡答題給參考答案） |
+
+同一個人、同一主題只會有一筆 `materials`，講義／簡報／影片都掛在它底下。
+沒登入也能生成，只是不會留紀錄。
 
 ## 注意事項
 
