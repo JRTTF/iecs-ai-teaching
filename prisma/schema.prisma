@@ -30,6 +30,7 @@ model User {
   forumPosts    ForumPost[]
   forumComments ForumComment[]
   forumLikes    ForumLike[]
+  ChatSession   ChatSession[]
 
   @@map("users")
 }
@@ -188,4 +189,29 @@ model ForumLike {
 
   @@unique([postId, userId])
   @@map("forum_likes")
+}
+
+model ChatSession {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  title     String // 對話的標題 (例如："討論資料結構講義")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id])
+  messages ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  sessionId Int
+  role      String // "user" 或 "assistant"
+  content   String
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
 }

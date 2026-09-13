@@ -323,8 +323,8 @@ const EduAIGuide = {
  * 原本每頁側欄是寫死的三筆假資料。這裡在頁面載入後把它換成資料庫裡的紀錄；
  * 只動 section-title 是「最近活動」的那個區塊，簡報大綱／影片章節那些不碰。 */
 const EduAIHistory = {
-  PAGE: { text: 'text-page.html', presentation: 'presentation.html', video: 'video-page.html', quiz: 'quiz.html' },
-  ICON: { text: 'description', presentation: 'slideshow', video: 'video_library', quiz: 'quiz' },
+  PAGE: { text: 'text-page.html', presentation: 'presentation.html', video: 'video-page.html', quiz: 'quiz.html', chat: 'chat.html' },
+  ICON: { text: 'description', presentation: 'slideshow', video: 'video_library', quiz: 'quiz', chat: 'chat' },
 
   _dayLabel(iso) {
     const d = new Date(iso), now = new Date();
@@ -338,6 +338,7 @@ const EduAIHistory = {
 
   _link(it) {
     if (it.kind === 'quiz') return `${this.PAGE.quiz}?quiz=${it.quizId}`;
+    if (it.kind === 'chat') return `${this.PAGE.chat}?session=${it.sessionId}`;
     return `${this.PAGE[it.kind] || 'index.html'}?output=${it.outputId}`;
   },
 

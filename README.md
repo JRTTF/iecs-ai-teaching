@@ -87,6 +87,7 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8000
 | 生成影片 | `materials` + `material_outputs` + `video_captions`（字幕時間軸） |
 | 生成測驗 | `quizzes` + `quiz_questions` |
 | 交卷 | `quiz_attempts` + `quiz_answers`（選擇題自動批改，簡答題給參考答案） |
+| AI 對話 | `chat_sessions` + `chat_messages`（每段對話一筆，每則訊息一筆；側欄「歷史對話」可回去） |
 
 同一個人、同一主題只會有一筆 `materials`，講義／簡報／影片都掛在它底下。
 沒登入也能生成，只是不會留紀錄。

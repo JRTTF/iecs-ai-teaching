@@ -743,7 +743,7 @@ app.get('/api/outputs/:id', async (req, res) => {
 app.get('/api/history', async (req, res) => {
   const userId = Number(req.query.userId);
   if (!userId) return res.status(400).json({ error: '缺少 userId。' });
-  const [outputs, quizzes] = await Promise.all([
+  const [outputs, quizzes, chats] = await Promise.all([
     prisma.materialOutput.findMany({
       where: { material: { userId } },
       orderBy: { createdAt: 'desc' },
@@ -751,6 +751,7 @@ app.get('/api/history', async (req, res) => {
       include: { material: { select: { id: true, title: true, topic: true } } },
     }),
     prisma.quiz.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 30 }),
+    prisma.chatSession.findMany({ where: { userId }, orderBy: { updatedAt: 'desc' }, take: 30 }),
   ]);
   const items = [
     ...outputs.map(o => ({
@@ -758,8 +759,84 @@ app.get('/api/history', async (req, res) => {
       materialId: o.material.id, outputId: o.id, fileUrl: o.fileUrl, hasText: !!o.contentText,
     })),
     ...quizzes.map(q => ({ kind: 'quiz', title: q.title, createdAt: q.createdAt, quizId: q.id })),
+    ...chats.map(c => ({ kind: 'chat', title: c.title, createdAt: c.updatedAt, sessionId: c.id })),
   ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 60);
   res.json(items);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  對話紀錄：chat_sessions / chat_messages（schema 由組員新增）
+//  一次對話 = 一個 session；每則訊息（使用者與 AI）各存一筆。
+// ═══════════════════════════════════════════════════════════
+
+/** 開一段新對話；標題通常用第一句話。 */
+app.post('/api/chat/sessions', async (req, res) => {
+  const { userId, title } = req.body || {};
+  if (!userId) return res.status(400).json({ error: '缺少 userId。' });
+  try {
+    const s = await prisma.chatSession.create({
+      data: { userId: Number(userId), title: String(title || '新對話').slice(0, 60) },
+    });
+    res.status(201).json({ id: s.id, title: s.title, createdAt: s.createdAt });
+  } catch {
+    res.status(500).json({ error: '建立對話失敗。' });
+  }
+});
+
+/** 某人的對話列表（最近更新的在前），附訊息數。 */
+app.get('/api/chat/sessions', async (req, res) => {
+  const userId = Number(req.query.userId);
+  if (!userId) return res.status(400).json({ error: '缺少 userId。' });
+  const list = await prisma.chatSession.findMany({
+    where: { userId },
+    orderBy: { updatedAt: 'desc' },
+    take: 50,
+    include: { _count: { select: { messages: true } } },
+  });
+  res.json(list.map(s => ({
+    id: s.id, title: s.title, createdAt: s.createdAt, updatedAt: s.updatedAt,
+    messageCount: s._count.messages,
+  })));
+});
+
+/** 一段對話的全部訊息（依時間）。 */
+app.get('/api/chat/sessions/:id', async (req, res) => {
+  const s = await prisma.chatSession.findUnique({
+    where: { id: Number(req.params.id) },
+    include: { messages: { orderBy: { createdAt: 'asc' } } },
+  });
+  if (!s) return res.status(404).json({ error: '找不到這段對話。' });
+  res.json({
+    id: s.id, title: s.title, userId: s.userId, createdAt: s.createdAt,
+    messages: s.messages.map(m => ({ id: m.id, role: m.role, content: m.content, createdAt: m.createdAt })),
+  });
+});
+
+/** 追加一則訊息。session 的 updatedAt 會由 @updatedAt 自動更新（透過 update 觸發）。 */
+app.post('/api/chat/sessions/:id/messages', async (req, res) => {
+  const sessionId = Number(req.params.id);
+  const { role, content } = req.body || {};
+  if (!['user', 'assistant'].includes(role) || !content) {
+    return res.status(400).json({ error: 'role 需為 user/assistant，且 content 不可為空。' });
+  }
+  try {
+    const m = await prisma.chatMessage.create({ data: { sessionId, role, content: String(content) } });
+    // 摸一下 session，讓 updatedAt 前進、列表排序才會跟著最近的對話走
+    await prisma.chatSession.update({ where: { id: sessionId }, data: { updatedAt: new Date() } });
+    res.status(201).json({ id: m.id, createdAt: m.createdAt });
+  } catch {
+    res.status(404).json({ error: '找不到這段對話。' });
+  }
+});
+
+/** 刪除一段對話（訊息由 onDelete: Cascade 連帶刪除）。 */
+app.delete('/api/chat/sessions/:id', async (req, res) => {
+  try {
+    await prisma.chatSession.delete({ where: { id: Number(req.params.id) } });
+    res.json({ ok: true });
+  } catch {
+    res.status(404).json({ error: '找不到這段對話。' });
+  }
 });
 
 const PORT = process.env.PORT || 4000;

@@ -112,9 +112,13 @@
           <span class="material-symbols-outlined">close</span> 取消使用教材
         </button>
         <button class="upload-btn" id="clear-chat-btn">
-          <span class="material-symbols-outlined">restart_alt</span> 清空對話
+          <span class="material-symbols-outlined">restart_alt</span> 開新對話
         </button>
       </div>
+    </div>
+    <div class="history-section">
+      <h3 class="section-title">歷史對話</h3>
+      <ul class="history-list" id="chat-sessions"></ul>
     </div>
     <div class="user-profile">
       <div class="avatar">林</div>
@@ -169,6 +173,79 @@
   const clearChat = document.getElementById('clear-chat-btn');
 
   let history  = [];   // 對話脈絡
+  let sessionId = null;   // 存在資料庫的對話編號；null 代表還沒開始存
+  const sessionsEl = document.getElementById('chat-sessions');
+
+  function getUser() {
+    try { return JSON.parse(localStorage.getItem('iecs_user') || 'null'); }
+    catch { return null; }
+  }
+
+  // ── 對話紀錄（chat_sessions / chat_messages）──
+  async function ensureSession(firstMessage) {
+    if (sessionId) return sessionId;
+    const u = getUser();
+    if (!u) return null;                      // 沒登入就不留紀錄，但照樣能聊
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/chat/sessions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.id, title: firstMessage.slice(0, 30) }),
+      });
+      if (!r.ok) return null;
+      sessionId = (await r.json()).id;
+      history_url_sync();
+      loadSessions();
+      return sessionId;
+    } catch { return null; }
+  }
+  function history_url_sync() {   // 網址帶上 session，重新整理不會掉
+    if (sessionId) window.history.replaceState(null, '', `chat.html?session=${sessionId}`);
+  }
+  // sid 用「送出當下」的對話：回覆串流中若按了開新對話，這則回覆仍要存回原本那段
+  function saveMessage(role, content, sid = sessionId) {
+    if (!sid || !content) return;
+    fetch(`${API_BASE_URL}/api/chat/sessions/${sid}/messages`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role, content }),
+    }).catch(() => {});
+  }
+
+  async function loadSessions() {
+    const u = getUser();
+    sessionsEl.textContent = '';
+    const hint = (t) => { const li = document.createElement('li'); li.className = 'history-item'; li.style.opacity = '.6'; li.textContent = t; sessionsEl.appendChild(li); };
+    if (!u) { hint('登入後會保存對話'); return; }
+    let list = [];
+    try { const r = await fetch(`${API_BASE_URL}/api/chat/sessions?userId=${u.id}`); if (r.ok) list = await r.json(); }
+    catch { hint('無法載入（後端未啟動）'); return; }
+    if (!list.length) { hint('尚無對話紀錄'); return; }
+    list.slice(0, 20).forEach(s => {
+      const li = document.createElement('li');
+      li.className = 'history-item' + (s.id === sessionId ? ' active' : '');
+      li.dataset.page = `chat.html?session=${s.id}`;
+      li.title = `${s.messageCount} 則 · ${new Date(s.updatedAt).toLocaleString('zh-TW')}`;
+      const h = document.createElement('span'); h.className = 'hash'; h.textContent = '#';
+      li.appendChild(h); li.appendChild(document.createTextNode(' ' + s.title));
+      li.addEventListener('click', () => { location.href = li.dataset.page; });
+      sessionsEl.appendChild(li);
+    });
+  }
+
+  // 從網址 ?session= 重開一段對話：把訊息畫回來，脈絡也接上
+  async function reopenSession(id) {
+    const r = await fetch(`${API_BASE_URL}/api/chat/sessions/${id}`);
+    if (!r.ok) return;
+    const s = await r.json();
+    sessionId = s.id;
+    history = [];
+    s.messages.forEach(m => {
+      const body = addBubble(m.role === 'user' ? 'user' : 'ai', '');
+      if (m.role === 'user') body.textContent = m.content; else renderMarkdown(m.content, body);
+      history.push({ role: m.role, content: m.content });
+    });
+    if (history.length > 16) history = history.slice(-16);
+    log.scrollTop = log.scrollHeight;
+  }
   let material = '';   // 掛上的教材內容（可空＝純聊天）
   let matName  = '';
 
@@ -302,6 +379,8 @@
 
     input.value = '';
     addBubble('user', q);
+    const sid = await ensureSession(q);
+    saveMessage('user', q, sid);
     const body = addBubble('ai', '');
     body.className = 'dots';
     sendBtn.disabled = true;
@@ -317,6 +396,7 @@
       else { body.className = 'body'; renderMarkdown(reply, body); }   // 串流完才渲染，過程中維持純文字
       history.push({ role: 'user', content: q });
       history.push({ role: 'assistant', content: reply });
+      saveMessage('assistant', reply, sid);
       if (history.length > 16) history = history.slice(-16);   // 只留最近幾輪，避免拖慢
     } catch (e) {
       body.className = 'body';
@@ -355,11 +435,17 @@
   });
 
   clearChat.addEventListener('click', () => {
+    sessionId = null;
+    window.history.replaceState(null, '', 'chat.html');
+    loadSessions();
     history = [];
     log.querySelectorAll('.chat-msg').forEach(el => el.remove());
     empty.style.display = '';
   });
 
+  loadSessions();
+  const openId = new URLSearchParams(location.search).get('session');
+  if (openId) reopenSession(Number(openId)).then(loadSessions);
   input.focus();
 })();
 </script>
