@@ -3,3 +3,8 @@ node_modules/
 prisma/dev.db
 prisma/dev.db-journal
 uploads/
+
+# 公開通道：執行檔 55MB 與每次不同的網址／日誌，不進版控
+tools/cloudflared.exe
+tunnel.log
+PUBLIC_URL.txt

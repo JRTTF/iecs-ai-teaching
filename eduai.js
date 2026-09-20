@@ -9,7 +9,11 @@
  *    python -m uvicorn app:app --host 127.0.0.1 --port 8000
  * ═══════════════════════════════════════════════════════════ */
 
-const EDUAI_BASE_URL = 'http://localhost:8000';
+// AI 引擎位址：本機開發直接打 8000；從外面（通道／其他裝置）進來時走 Express 的 /ai 轉接，
+// 這樣對外只需要一個網址，也不用處理跨域。
+const EDUAI_BASE_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://localhost:8000'
+  : '/ai';
 
 /* EduAI 對「12 字以內、又沒有問號」的輸入會回一句反問（那是教材生成情境的引導設計），
  * 但日常對話希望「什麼是遞迴」這種短問句直接得到答案，所以送出前補上問號。
@@ -391,11 +395,11 @@ document.addEventListener('DOMContentLoaded', () => EduAIHistory.render());
 /** 後端沒開時顯示明確提示，而不是讓使用者對著轉圈圈猜。 */
 function eduaiOfflineMessage() {
   if (EduAI._lastProbe === 'busy') {
-    return `AI 引擎正在忙（${EDUAI_BASE_URL}）。` + String.fromCharCode(10, 10) +
+    return `AI 引擎正在忙。` + String.fromCharCode(10, 10) +
            `它一次只能處理一個請求，目前可能正在生成簡報或影片。` + String.fromCharCode(10) +
            `請等前一個任務完成後再試一次。`;
   }
-  return `無法連線到 EduAI（${EDUAI_BASE_URL}）。` + String.fromCharCode(10, 10) +
+  return `無法連線到 EduAI。` + String.fromCharCode(10, 10) +
          `請先啟動 AI 後端：` + String.fromCharCode(10) +
          `1. 開啟終端機，進到 ai-engine/api 資料夾` + String.fromCharCode(10) +
          `2. 執行：python -m uvicorn app:app --host 127.0.0.1 --port 8000`;

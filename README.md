@@ -61,11 +61,27 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8000
 
 ---
 
+## 讓其他人用網址打開（公開網站）
+
+架構是「網站與 AI 都跑在一台電腦，用 Cloudflare 通道公開」：
+
+```
+別人的瀏覽器 ─► https://xxxx.trycloudflare.com ─► 你的電腦 Express(3306) ─┬─► 網站
+                                                                          └─► /ai/* 轉接 ─► EduAI(8000)
+```
+
+1. 第一次：把 [cloudflared](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe) 下載到 `tools\cloudflared.exe`
+2. 之後每次：**雙擊 `START_PUBLIC.bat`**，它會啟動網站、AI 引擎、通道，然後把公開網址印出來、複製到剪貼簿、存到 `PUBLIC_URL.txt`
+
+> 免費的 quick tunnel **每次重開網址都會變**，要固定網址得改用有帳號的方案（見下）。
+> 電腦關機或關掉視窗，網站就下線。AI 生成一次只能處理一個請求，多人同時按會排隊。
+
 ## 檔案說明
 
 | 檔案 | 用途 |
 |---|---|
-| `server.js` | Express：網頁伺服器 + REST API（使用者、論壇、教材、測驗） |
+| `server.js` | Express：網頁伺服器 + REST API（使用者、論壇、教材、測驗）+ `/ai/*` 轉接 AI 引擎 |
+| `START_PUBLIC.bat` | 一鍵啟動網站、AI 引擎與公開通道 |
 | `eduai.js` | 橋接層：前端呼叫 AI 引擎的唯一入口 |
 | `common.js` | 登入狀態、使用者資料、共用 UI |
 | `index.html` / `index.js` | 首頁與引導流程（選主題 → 跳到功能頁自動生成） |

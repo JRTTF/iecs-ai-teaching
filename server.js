@@ -1,4 +1,5 @@
 const fs = require('fs');
+const http = require('http');
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
@@ -837,6 +838,36 @@ app.delete('/api/chat/sessions/:id', async (req, res) => {
   } catch {
     res.status(404).json({ error: '找不到這段對話。' });
   }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  AI 引擎轉接：/ai/* → http://127.0.0.1:8000/*
+//
+//  網站要給外面的人用時，AI 引擎還是跑在這台電腦。讓 Express 幫忙轉接，
+//  外面的人只需要一個網址（通道打到 3306 就夠），前端也不用處理跨域。
+//  用 Node 內建 http 直接串流：簡報 HTML、影片 MP4 是大檔，對話是 SSE，
+//  都不能先讀進記憶體再送。生成要跑十幾分鐘，所以不設逾時。
+// ═══════════════════════════════════════════════════════════
+const AI_UPSTREAM = { host: '127.0.0.1', port: Number(process.env.EDUAI_PORT || 8000) };
+
+app.use('/ai', (req, res) => {
+  const upstreamPath = req.originalUrl.replace(/^\/ai/, '') || '/';
+  const headers = { ...req.headers, host: `${AI_UPSTREAM.host}:${AI_UPSTREAM.port}` };
+
+  const upstream = http.request(
+    { ...AI_UPSTREAM, method: req.method, path: upstreamPath, headers, timeout: 0 },
+    (up) => {
+      res.writeHead(up.statusCode, up.headers);
+      up.pipe(res);
+    },
+  );
+  upstream.on('error', (err) => {
+    // 引擎沒開：回 502，前端會照原本邏輯顯示「無法連線到 EduAI」
+    if (!res.headersSent) res.status(502).json({ error: 'AI 引擎未啟動（' + err.code + '）' });
+    else res.end();
+  });
+  req.on('aborted', () => upstream.destroy());
+  req.pipe(upstream);
 });
 
 const PORT = process.env.PORT || 4000;
