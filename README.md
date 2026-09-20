@@ -72,10 +72,8 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8000
                                                                           └─► /ai/* 轉接 ─► EduAI(8000)
 ```
 
-1. 第一次（只做一次）：下載 [ngrok](https://ngrok.com/download) 到 `tools
-grok.exe`，
-   然後用自己的 authtoken 授權：`tools
-grok.exe config add-authtoken <token>`
+1. 第一次（只做一次）：下載 [ngrok](https://ngrok.com/download) 到 `tools/ngrok.exe`，
+   然後用自己的 authtoken 授權：`tools\ngrok.exe config add-authtoken <token>`
 2. 之後每次：**雙擊 `START_PUBLIC.bat`**，它會啟動網站、AI 引擎、通道，網址複製到剪貼簿並自動開啟
 
 > 第一次用瀏覽器打開會看到 ngrok 的確認頁，按 **Visit Site** 即可（免費版的固定畫面）。
