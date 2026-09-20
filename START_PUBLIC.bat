@@ -24,14 +24,16 @@ REM 1) website backend (Express, port 3306)
 start "IECS website (3306)" /min cmd /c "node server.js"
 
 REM 2) AI engine (FastAPI, port 8000)
-set AI_DIR=%~dp0..\ai教材\eduai\api
-if not exist "%AI_DIR%\app.py" set AI_DIR=C:\Users\cavan521\ai教材\eduai\api
-if exist "%AI_DIR%\app.py" (
+REM    Folder name contains non-ASCII, so locate it with a wildcard instead of
+REM    spelling it here (works no matter which code page cmd is using).
+set AI_DIR=
+for /d %%d in ("%~dp0..\ai*") do if exist "%%d\eduai\api\app.py" set AI_DIR=%%d\eduai\api
+for /d %%d in ("%USERPROFILE%\ai*") do if not defined AI_DIR if exist "%%d\eduai\api\app.py" set AI_DIR=%%d\eduai\api
+if defined AI_DIR (
   start "EduAI engine (8000)" /min cmd /c "cd /d "%AI_DIR%" && python -m uvicorn app:app --host 127.0.0.1 --port 8000"
 ) else (
   echo [warn] AI engine not found - website will run without AI.
 )
-
 REM 3) public tunnel on the fixed domain
 start "ngrok tunnel" /min cmd /c "tools\ngrok.exe http 3306 --url %PUBLIC_URL% --log tunnel.log"
 
