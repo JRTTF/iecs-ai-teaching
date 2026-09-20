@@ -2,15 +2,28 @@
 setlocal
 cd /d "%~dp0"
 
+REM Fixed public domain (ngrok free static domain). Change here if you get a new one.
+set PUBLIC_DOMAIN=antiques-survivor-discharge.ngrok-free.dev
+set PUBLIC_URL=https://%PUBLIC_DOMAIN%
+
 echo ============================================================
-echo  IECS AI Teaching System - start everything + public tunnel
+echo  IECS AI Teaching System - start everything + public URL
 echo ============================================================
 echo.
+
+REM 0) ngrok must be present and authorized once:
+REM      tools\ngrok.exe config add-authtoken YOUR_TOKEN
+if not exist "tools\ngrok.exe" (
+  echo [error] tools\ngrok.exe missing. Download:
+  echo   https://ngrok.com/download
+  pause
+  exit /b 1
+)
 
 REM 1) website backend (Express, port 3306)
 start "IECS website (3306)" /min cmd /c "node server.js"
 
-REM 2) AI engine (FastAPI, port 8000) - path is relative to this folder's parent
+REM 2) AI engine (FastAPI, port 8000)
 set AI_DIR=%~dp0..\ai教材\eduai\api
 if not exist "%AI_DIR%\app.py" set AI_DIR=C:\Users\cavan521\ai教材\eduai\api
 if exist "%AI_DIR%\app.py" (
@@ -19,46 +32,34 @@ if exist "%AI_DIR%\app.py" (
   echo [warn] AI engine not found - website will run without AI.
 )
 
-REM 3) public tunnel (Cloudflare quick tunnel -> random *.trycloudflare.com URL)
-if not exist "tools\cloudflared.exe" (
-  echo [error] tools\cloudflared.exe missing. Download:
-  echo   https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
-  pause
-  exit /b 1
-)
-del /q tunnel.log 2>nul
-start "Cloudflare tunnel" /min cmd /c "tools\cloudflared.exe tunnel --url http://localhost:3306 --no-autoupdate > tunnel.log 2>&1"
+REM 3) public tunnel on the fixed domain
+start "ngrok tunnel" /min cmd /c "tools\ngrok.exe http 3306 --url %PUBLIC_URL% --log tunnel.log"
 
-echo Waiting for the public URL ...
-set URL=
+echo Waiting for the site to come up ...
+set OK=
 for /l %%i in (1,1,30) do (
-  if not defined URL (
-    for /f "tokens=*" %%u in ('findstr /r "https://[a-z0-9-]*\.trycloudflare\.com" tunnel.log 2^>nul') do (
-      for %%w in (%%u) do (
-        echo %%w | findstr /r "^https://[a-z0-9-]*\.trycloudflare\.com" >nul && set URL=%%w
-      )
-    )
-    if not defined URL timeout /t 1 /nobreak >nul
+  if not defined OK (
+    curl -s -o nul -m 3 http://localhost:3306/api/health && set OK=1
+    if not defined OK timeout /t 1 /nobreak >nul
   )
 )
 
 echo.
-if defined URL (
-  echo ============================================================
-  echo  PUBLIC URL  ^(share this with your team^):
-  echo.
-  echo    %URL%
-  echo.
-  echo  Local:  http://localhost:3306
-  echo ============================================================
-  echo %URL%> PUBLIC_URL.txt
-  echo %URL%| clip
-  echo URL copied to clipboard and saved to PUBLIC_URL.txt
-  start "" "%URL%"
-) else (
-  echo [warn] tunnel URL not found yet - check tunnel.log
-)
+echo ============================================================
+echo  PUBLIC URL  ^(fixed - share once with your team^):
 echo.
-echo Keep this window and the three minimized windows open.
-echo Close them to stop the site.
+echo    %PUBLIC_URL%
+echo.
+echo  Local:  http://localhost:3306
+echo ============================================================
+echo %PUBLIC_URL%> PUBLIC_URL.txt
+echo %PUBLIC_URL%| clip
+echo URL copied to clipboard.
+echo.
+echo If the public URL does not open, ngrok is probably not authorized yet:
+echo   tools\ngrok.exe config add-authtoken YOUR_TOKEN
+echo   ^(token: https://dashboard.ngrok.com/get-started/your-authtoken^)
+echo.
+start "" "%PUBLIC_URL%"
+echo Keep this window and the three minimized windows open. Close them to stop.
 pause

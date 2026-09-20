@@ -63,18 +63,24 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8000
 
 ## 讓其他人用網址打開（公開網站）
 
-架構是「網站與 AI 都跑在一台電腦，用 Cloudflare 通道公開」：
+固定網址：**https://antiques-survivor-discharge.ngrok-free.dev**
+
+架構是「網站與 AI 都跑在一台電腦，用 ngrok 通道公開」：
 
 ```
-別人的瀏覽器 ─► https://xxxx.trycloudflare.com ─► 你的電腦 Express(3306) ─┬─► 網站
+別人的瀏覽器 ─► https://antiques-…ngrok-free.dev ─► 你的電腦 Express(3306) ─┬─► 網站
                                                                           └─► /ai/* 轉接 ─► EduAI(8000)
 ```
 
-1. 第一次：把 [cloudflared](https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe) 下載到 `tools\cloudflared.exe`
-2. 之後每次：**雙擊 `START_PUBLIC.bat`**，它會啟動網站、AI 引擎、通道，然後把公開網址印出來、複製到剪貼簿、存到 `PUBLIC_URL.txt`
+1. 第一次（只做一次）：下載 [ngrok](https://ngrok.com/download) 到 `tools
+grok.exe`，
+   然後用自己的 authtoken 授權：`tools
+grok.exe config add-authtoken <token>`
+2. 之後每次：**雙擊 `START_PUBLIC.bat`**，它會啟動網站、AI 引擎、通道，網址複製到剪貼簿並自動開啟
 
-> 免費的 quick tunnel **每次重開網址都會變**，要固定網址得改用有帳號的方案（見下）。
-> 電腦關機或關掉視窗，網站就下線。AI 生成一次只能處理一個請求，多人同時按會排隊。
+> 第一次用瀏覽器打開會看到 ngrok 的確認頁，按 **Visit Site** 即可（免費版的固定畫面）。
+> 電腦關機或關掉視窗，網站就下線。AI 一次只處理一個請求，多人同時按會排隊。
+> 網域綁在建立它的 ngrok 帳號上；組員要開自己的公開網址，要用自己的帳號改 `START_PUBLIC.bat` 裡的 `PUBLIC_DOMAIN`。
 
 ## 檔案說明
 
