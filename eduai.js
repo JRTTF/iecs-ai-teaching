@@ -22,6 +22,13 @@ function _asQuestion(msg) {
   return (msg.length <= 12 && !/[?？\n]/.test(msg)) ? msg + '？' : msg;
 }
 
+/** 把文字轉成可安全放進 innerHTML 的字串。標題、主題可能來自 AI 或資料庫，
+ *  而資料庫可以被任何人寫入，不跳脫就會變成 XSS。 */
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
 const EduAI = {
   baseUrl: EDUAI_BASE_URL,
 

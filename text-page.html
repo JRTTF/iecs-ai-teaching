@@ -228,8 +228,8 @@
         lastText = o.contentText || '';
         renderText(lastText);
         history = [{ role: 'user', content: `請講解「${topic}」` }, { role: 'assistant', content: lastText }];
-        setStatus(`已重新開啟「${topic}」（${new Date(o.createdAt).toLocaleString('zh-TW')} 生成），可繼續追問。`);
-      } catch (e) { setStatus(e.message); }
+        setStatus(`已重新開啟「${escapeHtml(topic)}」（${new Date(o.createdAt).toLocaleString('zh-TW')} 生成），可繼續追問。`);
+      } catch (e) { setStatus(escapeHtml(e.message)); }
       return;
     }
     const guide = EduAIGuide.load();

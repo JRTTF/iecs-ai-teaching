@@ -190,14 +190,14 @@
     player.src = videoUrl;
     container.classList.add('has-video');
     renderTimeline((o.captions || []).map(c => ({ start: Number(c.startTime), text: c.captionText, title: c.segmentLabel })));
-    setStatus(`已重新開啟「${topic}」（${new Date(o.createdAt).toLocaleString('zh-TW')} 生成）。`);
+    setStatus(`已重新開啟「${escapeHtml(topic)}」（${new Date(o.createdAt).toLocaleString('zh-TW')} 生成）。`);
   }
 
   // ── 載入：從首頁引導流程取得主題，自動生成影片 ──
   (async function init() {
     const reopenId = new URLSearchParams(location.search).get('output');
     if (reopenId) {
-      try { await reopenFromHistory(reopenId); } catch (e) { setStatus(e.message); }
+      try { await reopenFromHistory(reopenId); } catch (e) { setStatus(escapeHtml(e.message)); }
       return;
     }
     const guide = EduAIGuide.load();

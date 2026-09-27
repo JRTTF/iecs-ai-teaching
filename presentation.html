@@ -236,7 +236,7 @@
   function renderOutline() {
     outline.innerHTML = titles
       .map((t, i) => `<li class="history-item${i === 0 ? ' active' : ''}" data-page="${i}">` +
-                     `<span class="hash">#</span> ${String(i + 1).padStart(2, '0')} ${t}</li>`)
+                     `<span class="hash">#</span> ${String(i + 1).padStart(2, '0')} ${escapeHtml(t)}</li>`)
       .join('');
     [...outline.children].forEach(li =>
       li.addEventListener('click', () => showPage(Number(li.dataset.page))));
