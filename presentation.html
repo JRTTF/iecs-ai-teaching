@@ -11,7 +11,9 @@
   <link rel="stylesheet" href="Style.css">
   <style>
     /* 讓原本的 slide-preview 區塊能嵌入生成的簡報 */
-    .slide-preview { position: relative; overflow: hidden; padding: 0; }
+    .slide-preview { position: relative; overflow: hidden; padding: 0;
+      /* 視窗矮時跟著縮小，整張投影片一次看得完（高度最多約一個畫面） */
+      width: min(100%, calc((100vh - 120px) * 16 / 9)); min-width: 320px; }
     .slide-preview iframe { width: 100%; height: 100%; border: 0; display: block; }
     .slide-preview.is-empty iframe { display: none; }
     .slide-preview .preview-msg { display: none; }
@@ -167,16 +169,17 @@
   async function editCurrentSlide() {
     const instruction = editInput.value.trim();
     if (!instruction || !presId) return;
-    if (!(await EduAI.isOnline())) { subtitle.textContent = eduaiOfflineMessage(); return; }
+    if ((await EduAI.probe()) === 'down') { subtitle.textContent = eduaiOfflineMessage(); return; }
     const keep = cur;
     setControlsEnabled(false);
     editBar.classList.add('show');   // 停用期間仍顯示，讓使用者看得到自己打的字
     subtitle.textContent = `正在修改第 ${keep + 1} 頁…（只改這一頁，約 10-30 秒）`;
     try {
-      const r = await EduAI.editSlide(presId, keep, instruction);
+      const r = await EduAI.editSlide(presId, keep, instruction,
+        (txt) => { subtitle.textContent = txt; });
       slideUrl = r.url;
-      // 新版 HTML 載入完成後再跳回原本那一頁，否則 show() 會叫不到
-      frame.onload = () => { frame.onload = null; showPage(keep); };
+      // 新版 HTML 載入完成後，frame 的 load 事件會自動跳回 cur 這一頁
+      cur = keep;
       frame.src = slideUrl;
       const info = await EduAI.presentationInfo(presId);
       titles = info.titles || titles;
@@ -222,16 +225,37 @@
   function showPage(i) {
     dlog('showPage', `i=${i} cur=${cur} n=${titles.length}`);
     if (!titles.length) return;
-    cur = (i + titles.length) % titles.length;
-    try {
-      frame.contentWindow.show(cur);
-    } catch {
-      frame.src = `${slideUrl}#${cur}`;
-    }
+    syncOuter((i + titles.length) % titles.length);
+    // 簡報還在載入時叫不到 show()：先記住頁碼，載入完成的 load 事件會跳過去
+    try { frame.contentWindow.show(cur); } catch { /* 等 load */ }
+  }
+
+  // 外面的頁碼、大綱、縮圖跟著 cur 走
+  function syncOuter(i) {
+    cur = i;
     pageInd.textContent = `${cur + 1} / ${titles.length}`;
     [...outline.children].forEach((li, k) => li.classList.toggle('active', k === cur));
     [...thumbs.children].forEach((d, k) => d.classList.toggle('active', k === cur));
   }
+
+  // 簡報本身也能換頁（裡面的箭頭、鍵盤、滑動），原本外面的頁碼不會跟著變，
+  // 修改後重新載入也會回到第 1 頁，兩邊就對不上。每次載入都把簡報的 show() 包一層：
+  // 裡面換頁就回報給外面；載入完成後直接跳到外面記的那一頁。
+  frame.addEventListener('load', () => {
+    try {
+      const w = frame.contentWindow;
+      if (typeof w.show !== 'function' || w.show.__synced) return;
+      const inner = w.show;
+      const wrapped = function (i) {
+        inner(i);
+        const n = titles.length;
+        if (n) syncOuter(((i % n) + n) % n);
+      };
+      wrapped.__synced = true;
+      w.show = wrapped;
+      if (titles.length) w.show(cur);
+    } catch { /* 不同來源的頁面碰不到，就只靠外面的按鈕 */ }
+  });
 
   function renderOutline() {
     outline.innerHTML = titles
@@ -319,8 +343,14 @@
       catch (e) { preview.classList.add('is-empty'); setMsg('無法開啟'); subtitle.textContent = e.message; }
       return;
     }
-    const guide = EduAIGuide.load();
+    // 從背景工作區點進來：?job= 接上那份還沒拿回的工作
+    const jobParam = new URLSearchParams(location.search).get('job');
+    const guide = jobParam ? null : EduAIGuide.load();
     topic = guide && guide.topic ? guide.topic : '';
+    if (jobParam) {
+      try { topic = (await EduAI.jobStatus(jobParam)).topic || '簡報'; }
+      catch (e) { preview.classList.add('is-empty'); setMsg('無法接上這份工作'); subtitle.textContent = e.message; return; }
+    }
 
     if (!topic) {
       preview.classList.add('is-empty');
@@ -330,7 +360,8 @@
       return;
     }
 
-    if (!(await EduAI.isOnline())) {
+    // 引擎忙也可以送出：工作會排隊，輪到時自動開始；只有引擎沒開才擋下來
+    if (!jobParam && !EduAI.hasPendingJob('/make_html_slide', topic) && (await EduAI.probe()) === 'down') {
       preview.classList.add('is-empty');
       setMsg('無法連線到 AI 服務');
       subtitle.textContent = eduaiOfflineMessage();
@@ -342,9 +373,10 @@
     setBar(2);
 
     try {
-      const result = await EduAI.generateSlides(
-        topic, (guide && guide.content) || '', '瑞士國際',
-        (txt, pct) => { subtitle.textContent = txt; setBar(pct); });
+      const onProg = (txt, pct) => { subtitle.textContent = txt; setBar(pct); };
+      const result = jobParam
+        ? await EduAI.resumeSlides(jobParam, onProg)
+        : await EduAI.generateSlides(topic, (guide && guide.content) || '', '瑞士國際', onProg);
       setBar(100);
       setTimeout(() => setBar(null), 800);
 
@@ -368,8 +400,9 @@
       }
     } catch (e) {
       preview.classList.add('is-empty');
-      setMsg('生成失敗');
-      subtitle.textContent = '簡報生成失敗：' + e.message;
+      const stopped = e.message === '已停止生成';
+      setMsg(stopped ? '已停止生成' : '生成失敗');
+      subtitle.textContent = stopped ? '這份簡報已停止生成，回主頁可以重新開始。' : '簡報生成失敗：' + e.message;
       setBar(null);
     }
   })();

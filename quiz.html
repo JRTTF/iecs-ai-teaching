@@ -355,7 +355,8 @@
     }
     const u = getUser();
     if (!u) { setStatus('請先登入，測驗才能存進你的帳號。'); return; }
-    if (!(await EduAI.isOnline())) {
+    // 引擎忙也可以送出：工作會排隊，輪到時自動開始；只有引擎沒開才擋下來
+    if ((await EduAI.probe()) === 'down') {
       setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
       return;
     }
@@ -366,7 +367,7 @@
       const asTopic = input.length <= 40;
       const quiz = await EduAI.generateQuizJson(
         asTopic ? input : '', asTopic ? '' : input, 5, 5,
-        (txt) => setStatus(txt, true));
+        (txt) => setStatus(escapeHtml(txt), true));
 
       const title = (asTopic ? input : input.slice(0, 20) + '…') + ' - 隨堂測驗';
       const r = await fetch(`${API_BASE_URL}/api/quizzes`, {
@@ -392,8 +393,8 @@
     const qid = new URLSearchParams(location.search).get('quiz');
     if (qid) startQuiz(Number(qid));
   });
-  EduAI.isOnline().then(ok => {
-    if (!ok) setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
+  EduAI.probe().then(st => {
+    if (st === 'down') setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
   });
 })();
 </script>

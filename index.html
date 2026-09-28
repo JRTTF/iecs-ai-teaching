@@ -152,9 +152,16 @@
     <section class="core-input-container js-hidden" id="block-input">
       <button class="input-back-btn" data-back="mode-select"><span class="material-symbols-outlined">arrow_back</span> 重新選擇</button>
       <div class="prompt-box">
+        <div class="upload-chip" id="upload-chip" hidden></div>
         <textarea id="main-textarea" placeholder="例如：我想學韓文基礎對話，並生成中英對照講義..."></textarea>
         <div class="prompt-actions">
-          <button class="upload-btn"><span class="material-symbols-outlined">upload_file</span> 上傳講義/PDF</button>
+          <button class="upload-btn" type="button"><span class="material-symbols-outlined">upload_file</span> 上傳講義（PPT／PDF）</button>
+          <div class="upload-formats" id="upload-formats" hidden>
+            <span>生成成：</span>
+            <button type="button" data-format="智慧簡報">智慧簡報</button>
+            <button type="button" data-format="文字講義">文字講義</button>
+            <button type="button" data-format="影音教材">影音教材</button>
+          </div>
           <button class="generate-main-btn">開始分析與生成 <span class="material-symbols-outlined">arrow_forward</span></button>
         </div>
       </div>

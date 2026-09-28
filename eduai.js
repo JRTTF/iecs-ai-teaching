@@ -54,37 +54,135 @@ const EduAI = {
     return (await this.probe()) === 'ok';
   },
 
-  /** 輪詢生成進度：EduAI 生成需數分鐘，沒有進度提示使用者會以為當機。 */
-  _startProgress(onProgress) {
-    if (!onProgress) return null;
-    const t0 = Date.now();
-    return setInterval(async () => {
+  /** 送出長時間的生成請求（或接上已經在跑的那份），等到完成後回傳一般的 Response。
+   *
+   *  一律交給網站伺服器排隊：伺服器立刻回工作編號，瀏覽器每 3 秒問一次狀態。
+   *  原本瀏覽器直接等 AI 引擎回應，從外面連進來的請求撐不過 5 分鐘就被切斷，
+   *  簡報卻要跑 8～15 分鐘；切到別頁再回來也只能從頭生成。
+   *  onProgress(文字, 百分比)：輪到自己時顯示引擎進度，還沒輪到就顯示排第幾。 */
+  async _runJob(path, form, onProgress, jobId) {
+    const store = 'eduai_job:' + path;
+    const key = form ? this._jobKey(form) : '';
+    let resumed = !!jobId;
+    if (!jobId && form) {
+      // 同一頁、同樣的輸入已經有工作在跑（使用者離開後又回來）→ 接上它，不重新生成
+      const saved = this._loadJob(path);
+      if (saved && saved.key === key) { jobId = saved.jobId; resumed = true; }
+    }
+    if (!jobId) {
+      const u = EduAIStore._user();
+      const start = await fetch(`${API_BASE_URL}/ai-jobs${path}`, {
+        method: 'POST', body: form,
+        headers: { 'X-Job-Topic': encodeURIComponent(form.get('topic') || form.get('url') || ''),
+                   'X-User-Id': u ? String(u.id) : '' },
+      });
+      if (!start.ok) throw new Error(`HTTP ${start.status}`);
+      jobId = (await start.json()).jobId;
       try {
-        const r = await fetch(`${this.baseUrl}/slide_progress`);
-        const j = await r.json();
-        const s = Math.floor((Date.now() - t0) / 1000);
-        const mmss = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-        // 第二個參數是後端估的百分比，頁面用它畫進度條
-        if (j.stage && j.stage !== '完成') onProgress(`${j.stage}（已經過 ${mmss}）`, j.pct || 0);
-      } catch { /* 進度拿不到不影響生成本身 */ }
-    }, 2000);
+        localStorage.setItem(store, JSON.stringify(
+          { jobId, key, topic: form.get('topic') || '', t: Date.now() }));
+      } catch { /* 無痕模式存不了就算了，只是不能接續 */ }
+    }
+    const forget = () => {
+      try { if ((this._loadJob(path) || {}).jobId === jobId) localStorage.removeItem(store); } catch { /* 同上 */ }
+    };
+    const t0 = Date.now();
+    const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    for (let misses = 0, first = true; ; first = false) {
+      if (!first) await new Promise(r => setTimeout(r, 3000));
+      let r = null, j = null;
+      try {
+        r = await fetch(`${API_BASE_URL}/ai-jobs/${jobId}/status`, { signal: AbortSignal.timeout(8000) });
+        j = await r.json();
+      } catch { /* 下面當作這次沒問到 */ }
+      if (r && r.status === 404) {
+        forget();
+        // 要接的舊工作已經不在（伺服器重啟過）→ 重新送一次
+        if (resumed && form) return this._runJob(path, form, onProgress);
+        throw new Error((j && j.error) || '找不到這個生成工作。');
+      }
+      if (!j) {
+        // 網路短暫不穩就再試，連續失敗一分鐘才放棄
+        if (++misses > 20) throw new Error('連線中斷，請稍後重新整理頁面，生成會自動接續。');
+        continue;
+      }
+      misses = 0;
+      if (j.status !== 'running' && j.status !== 'queued') {
+        const res = await fetch(`${API_BASE_URL}/ai-jobs/${jobId}/result`);
+        forget();
+        return res;
+      }
+      if (onProgress) {
+        if (j.cancelRequested) {
+          onProgress('正在停止…', 0);
+        } else if (j.status === 'queued') {
+          onProgress(`排隊中，前面還有 ${j.position} 份工作（AI 引擎一次只能做一份）`, 1);
+        } else {
+          const p = j.progress || {};
+          // 經過時間以引擎實際開始算，切頁回來不會歸零
+          const sec = p.elapsed || Math.round((Date.now() - (j.startedAt || t0)) / 1000);
+          onProgress(`${p.stage && p.busy ? p.stage : 'AI 生成中…'}（已經過 ${fmt(sec)}）`, p.busy ? p.pct : 2);
+        }
+      }
+    }
   },
 
-  async _postForBlob(path, form, onProgress) {
-    const timer = this._startProgress(onProgress);
+  /** 同一份工作的判斷依據：送出的主要欄位都一樣。 */
+  _jobKey(form) {
+    return ['topic', 'url', 'pres_id', 'index', 'instruction', 'voice_name', 'content']
+      .map(k => form.get(k) || '').join('|');
+  },
+
+  _loadJob(path) {
     try {
-      const res = await fetch(`${this.baseUrl}${path}`, { method: 'POST', body: form });
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
-        try { const j = await res.json(); msg = j.error || msg; } catch { /* 非 JSON 錯誤 */ }
-        throw new Error(msg);
-      }
-      const presId = res.headers.get('X-Presentation-Id');
-      const blob = await res.blob();
-      return { url: URL.createObjectURL(blob), presId, blob, headers: res.headers };
-    } finally {
-      if (timer) clearInterval(timer);
+      const j = JSON.parse(localStorage.getItem('eduai_job:' + path) || 'null');
+      // 伺服器只保留完成後 30 分鐘；生成最久十幾分鐘，超過 3 小時一定拿不到了
+      if (j && Date.now() - j.t < 3 * 3600 * 1000) return j;
+    } catch { /* 讀不到當作沒有 */ }
+    return null;
+  },
+
+  /** 這一頁、這個主題是否有還沒拿回結果的生成工作。
+   *  有的話不必先檢查引擎：引擎正忙著做的就是這份，檢查只會誤報「無法連線」。 */
+  hasPendingJob(path, topic) {
+    const j = this._loadJob(path);
+    return !!(j && j.topic === topic);
+  },
+
+  /** 停止自己的生成工作（排隊中直接取消；進行中請引擎停下來）。 */
+  async cancelJob(jobId) {
+    const u = EduAIStore._user();
+    const r = await fetch(`${API_BASE_URL}/ai-jobs/${encodeURIComponent(jobId)}/cancel`, {
+      method: 'POST', headers: { 'X-User-Id': u ? String(u.id) : '' },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  },
+
+  /** 查一個工作的狀態（背景工作區的「開啟」連結用）。 */
+  async jobStatus(jobId) {
+    const r = await fetch(`${API_BASE_URL}/ai-jobs/${encodeURIComponent(jobId)}/status`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  },
+
+  async _postForBlob(path, form, onProgress, jobId) {
+    const res = await this._runJob(path, form, onProgress, jobId);
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const j = await res.json(); msg = j.error || msg; } catch { /* 非 JSON 錯誤 */ }
+      throw new Error(msg);
     }
+    const presId = res.headers.get('X-Presentation-Id');
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), presId, blob, headers: res.headers };
+  },
+
+  /** 接上已經在背景跑的簡報工作（從背景工作區點進來）。 */
+  resumeSlides(jobId, onProgress) {
+    return this._postForBlob('/make_html_slide', null, onProgress, jobId);
   },
 
   /** 主題（＋可選教材）→ 互動簡報 HTML。 */
@@ -126,15 +224,20 @@ const EduAI = {
     form.append('title', topic || '課程測驗');
     form.append('num_mc', numMc);
     form.append('num_sa', numOpen);
-    const timer = this._startProgress(onProgress);
-    try {
-      const res = await fetch(`${this.baseUrl}/make_quiz_json`, { method: 'POST', body: form });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
-      return j;
-    } finally {
-      if (timer) clearInterval(timer);
-    }
+    const res = await this._runJob('/make_quiz_json', form, onProgress);
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+    return j;
+  },
+
+  /** 只抽出 PDF 的文字（不叫模型整理，幾秒就好），給「上傳講義後生成」用。 */
+  async extractPdf(file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${this.baseUrl}/extract_pdf`, { method: 'POST', body: form });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+    return j;
   },
 
   /** 上傳 PDF，回傳抽出的純文字（可當教材內容用）。 */
@@ -201,7 +304,15 @@ const EduAI = {
     form.append('topic', topic);
     form.append('content', content);
     form.append('voice_name', voiceName);
-    const r = await this._postForBlob('/make_teaching_video', form, onProgress);
+    return this._videoResult(await this._postForBlob('/make_teaching_video', form, onProgress));
+  },
+
+  /** 接上已經在背景跑的影片工作（從背景工作區點進來）。 */
+  async resumeVideo(jobId, onProgress) {
+    return this._videoResult(await this._postForBlob('/make_teaching_video', null, onProgress, jobId));
+  },
+
+  _videoResult(r) {
     let timeline = [];
     try {
       const raw = r.headers?.get('X-Video-Timeline');
@@ -398,6 +509,185 @@ const EduAIHistory = {
   },
 };
 document.addEventListener('DOMContentLoaded', () => EduAIHistory.render());
+
+/* ── 背景工作區：右下角的按鈕，看目前在生成什麼、進度、排隊 ──
+ * AI 引擎一次只做一份，多人使用時常常要等。原本看不到前面有幾份、也不知道自己那份跑到哪，
+ * 切到別頁更是完全沒消息。資料來自網站伺服器的 /api/ai-jobs（引擎再忙也問得到）。 */
+const EduAIWorkspace = {
+  PAGE: { '/make_html_slide': 'presentation.html', '/make_teaching_video': 'video-page.html' },
+  ICON: { '簡報': 'slideshow', '簡報（YouTube）': 'slideshow', '修改簡報': 'edit_note',
+          '影片': 'video_library', '測驗': 'quiz', '匯出 PPTX': 'download' },
+  _open: false,
+  _timer: null,
+
+  init() {
+    if (document.getElementById('eduai-ws')) return;
+    const st = document.createElement('style');
+    st.textContent = `
+#eduai-ws{position:fixed;right:20px;bottom:20px;z-index:900;font-family:inherit}
+#eduai-ws .ws-btn{display:flex;align-items:center;gap:6px;border:0;cursor:pointer;
+  background:var(--bg-primary,#2C3E50);color:#fff;border-radius:22px;padding:9px 16px;
+  font-size:.88rem;box-shadow:0 6px 18px rgba(0,0,0,.18)}
+#eduai-ws .ws-btn .material-symbols-outlined{font-size:19px}
+#eduai-ws .ws-badge{background:var(--accent-color,#D4AF37);color:#2C3E50;border-radius:10px;
+  padding:0 7px;font-weight:700;font-size:.78rem;line-height:18px}
+#eduai-ws .ws-badge[hidden]{display:none}
+#eduai-ws .ws-panel{display:none;position:absolute;right:0;bottom:50px;width:340px;max-width:calc(100vw - 40px);
+  max-height:min(460px,70vh);overflow:auto;background:var(--bg-card,#fff);color:var(--text-primary,#2C3E50);
+  border:1px solid var(--divider-color,#E0DDD5);border-radius:14px;box-shadow:0 14px 40px rgba(0,0,0,.18);padding:14px}
+#eduai-ws.open .ws-panel{display:block}
+#eduai-ws h4{margin:0 0 10px;font-size:.95rem;display:flex;justify-content:space-between;align-items:center}
+#eduai-ws h4 small{font-weight:400;color:var(--text-muted,#9BA3AF);font-size:.75rem}
+#eduai-ws .ws-engine{font-size:.8rem;color:var(--text-secondary,#606F7B);margin-bottom:10px}
+#eduai-ws .ws-item{border-top:1px solid var(--divider-color,#E0DDD5);padding:10px 0}
+#eduai-ws .ws-row{display:flex;align-items:center;gap:8px;font-size:.86rem}
+#eduai-ws .ws-row .material-symbols-outlined{font-size:18px;opacity:.75}
+#eduai-ws .ws-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#eduai-ws .ws-other .ws-title{color:var(--text-muted,#9BA3AF)}
+#eduai-ws .ws-state{font-size:.76rem;color:var(--text-secondary,#606F7B);margin:4px 0 0 26px}
+#eduai-ws .ws-bar{height:5px;border-radius:3px;background:var(--bg-card-hover,#EAE7E0);margin:6px 0 0 26px;overflow:hidden}
+#eduai-ws .ws-bar>span{display:block;height:100%;background:var(--accent-color,#D4AF37);transition:width .6s}
+#eduai-ws .ws-open{font-size:.78rem;color:#fff;background:var(--bg-primary,#2C3E50);border-radius:6px;
+  padding:3px 9px;text-decoration:none;white-space:nowrap}
+#eduai-ws .ws-stop{font-size:.78rem;color:#9b2c2c;background:#fbeaea;border:0;border-radius:6px;
+  padding:3px 9px;cursor:pointer;white-space:nowrap}
+#eduai-ws .ws-stop:disabled{opacity:.5;cursor:default}
+#eduai-ws .ws-empty{font-size:.84rem;color:var(--text-muted,#9BA3AF);padding:6px 0}`;
+    document.head.appendChild(st);
+
+    const root = document.createElement('div');
+    root.id = 'eduai-ws';
+    root.innerHTML =
+      '<div class="ws-panel" role="dialog" aria-label="背景工作區">' +
+        '<h4>背景工作區 <small>每 5 秒更新</small></h4>' +
+        '<div class="ws-engine"></div><div class="ws-list"></div>' +
+      '</div>' +
+      '<button class="ws-btn" type="button" title="看目前的生成工作與進度">' +
+        '<span class="material-symbols-outlined">pending_actions</span>背景工作' +
+        '<span class="ws-badge" hidden></span></button>';
+    document.body.appendChild(root);
+    root.querySelector('.ws-btn').addEventListener('click', () => {
+      this._open = !this._open;
+      root.classList.toggle('open', this._open);
+      this.refresh();
+    });
+    this.refresh();
+  },
+
+  _fmt(ms) {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  },
+
+  async refresh() {
+    clearTimeout(this._timer);
+    // 面板開著時勤快一點；關著只需要更新按鈕上的數字
+    this._timer = setTimeout(() => this.refresh(), this._open ? 5000 : 15000);
+    const root = document.getElementById('eduai-ws');
+    if (!root) return;
+    const u = EduAIStore._user();
+    let data;
+    try {
+      const r = await fetch(`${API_BASE_URL}/api/ai-jobs?userId=${u ? u.id : ''}`,
+        { signal: AbortSignal.timeout(8000) });
+      data = await r.json();
+    } catch {
+      root.querySelector('.ws-engine').textContent = '無法取得工作狀態（網站伺服器沒有回應）。';
+      return;
+    }
+    const jobs = data.jobs || [];
+    const running = jobs.filter(j => j.status === 'running' || j.status === 'queued');
+    const badge = root.querySelector('.ws-badge');
+    badge.hidden = !running.length;
+    badge.textContent = running.length;
+    if (!this._open) return;
+
+    const p = data.progress || {};
+    root.querySelector('.ws-engine').textContent = p.busy
+      ? `AI 引擎：${p.stage}（${p.pct}%，已經過 ${this._fmt((p.elapsed || 0) * 1000)}）`
+      : (running.length ? 'AI 引擎：準備中…' : 'AI 引擎：空閒，可以直接生成。');
+
+    const list = root.querySelector('.ws-list');
+    list.textContent = '';
+    // 自己的全部列出；別人的只列還在跑的（讓你知道前面有幾份）
+    const shown = jobs.filter(j => j.mine || j.status === 'running' || j.status === 'queued').reverse();
+    if (!shown.length) {
+      const d = document.createElement('div');
+      d.className = 'ws-empty';
+      d.textContent = u ? '目前沒有工作。生成的簡報、影片、測驗會出現在這裡。' : '登入後可以看到自己的生成工作。';
+      list.appendChild(d);
+      return;
+    }
+    const now = Date.now();
+    for (const j of shown) {
+      const item = document.createElement('div');
+      item.className = 'ws-item' + (j.mine ? '' : ' ws-other');
+      const row = document.createElement('div');
+      row.className = 'ws-row';
+      const ico = document.createElement('span');
+      ico.className = 'material-symbols-outlined';
+      ico.textContent = this.ICON[j.kind] || 'auto_awesome';
+      const title = document.createElement('span');
+      title.className = 'ws-title';
+      title.textContent = j.mine ? `${j.kind}：${j.topic || '（未命名）'}` : `其他使用者的${j.kind}`;
+      row.append(ico, title);
+
+      let state = '', pct = null;
+      if (j.cancelRequested && j.status === 'running') {
+        state = '正在停止…（模型停下來需要幾秒）';
+      } else if (j.status === 'running') {
+        pct = p.busy ? p.pct : 2;
+        state = `正在生成${p.busy ? `・${p.stage}` : ''}・已經過 ${this._fmt(now - (j.startedAt || now))}`;
+      } else if (j.status === 'queued') {
+        pct = 0;
+        state = `排隊中，前面還有 ${j.position} 份・已等 ${this._fmt(now - j.createdAt)}`;
+      } else if (j.status === 'cancelled') {
+        state = '已停止';
+      } else if (j.status === 'done') {
+        state = j.fetched ? `已完成${j.path in this.PAGE || j.kind === '測驗' ? '，已存到左側「最近活動」' : ''}` : '已完成，還沒打開';
+        const page = this.PAGE[j.path];
+        if (j.mine && !j.fetched && page && j.id) {
+          const a = document.createElement('a');
+          a.className = 'ws-open';
+          a.href = `${page}?job=${encodeURIComponent(j.id)}`;
+          a.textContent = '開啟';
+          row.appendChild(a);
+        }
+      } else {
+        state = '生成失敗';
+      }
+      if (j.mine && j.id && !j.cancelRequested && (j.status === 'running' || j.status === 'queued')) {
+        const stop = document.createElement('button');
+        stop.type = 'button';
+        stop.className = 'ws-stop';
+        stop.textContent = j.status === 'queued' ? '取消' : '停止';
+        stop.addEventListener('click', async () => {
+          const what = `${j.kind}「${j.topic || '未命名'}」`;
+          if (!confirm(j.status === 'queued' ? `取消排隊中的${what}？` : `停止正在生成的${what}？已經生成的部分不會保留。`)) return;
+          stop.disabled = true;
+          try { await EduAI.cancelJob(j.id); } catch (e) { alert('停止失敗：' + e.message); }
+          this.refresh();
+        });
+        row.appendChild(stop);
+      }
+      item.appendChild(row);
+      const stEl = document.createElement('div');
+      stEl.className = 'ws-state';
+      stEl.textContent = state;
+      item.appendChild(stEl);
+      if (pct !== null) {
+        const bar = document.createElement('div');
+        bar.className = 'ws-bar';
+        const fill = document.createElement('span');
+        fill.style.width = `${pct}%`;
+        bar.appendChild(fill);
+        item.appendChild(bar);
+      }
+      list.appendChild(item);
+    }
+  },
+};
+document.addEventListener('DOMContentLoaded', () => EduAIWorkspace.init());
 
 /** 後端沒開時顯示明確提示，而不是讓使用者對著轉圈圈猜。 */
 function eduaiOfflineMessage() {

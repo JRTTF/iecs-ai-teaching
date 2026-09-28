@@ -6,6 +6,8 @@ function selectMode(mode) {
     document.getElementById('block-mode-select').classList.add('js-hidden');
     if (mode === 'upload') {
         document.getElementById('block-input').classList.remove('js-hidden');
+        const uf = document.getElementById('upload-formats');
+        if (uf) uf.hidden = false;
     } else {
         document.getElementById('block-guide').classList.remove('js-hidden');
         goToStep(1);
@@ -79,9 +81,144 @@ function finishGuide() {
     const ta = document.getElementById('main-textarea');
     ta.value = prompt;
     ta.focus();
+    const uf = document.getElementById('upload-formats');
+    if (uf) uf.hidden = true;
+}
+
+// ── 上傳講義：PPTX／PDF／純文字 → 當作教材內容生成 ──
+// PPTX 在瀏覽器裡直接拆開讀（它其實是 zip 檔），不佔用 AI 引擎；PDF 請引擎抽文字。
+let uploadedMaterial = null;   // { name, title, text, pages }
+
+async function readZipEntries(buf) {
+    const dv = new DataView(buf);
+    // 從檔尾找「中央目錄結尾」記錄
+    let eocd = -1;
+    for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 65557); i--) {
+        if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('這不是有效的 PPTX 檔');
+    const count = dv.getUint16(eocd + 10, true);
+    let p = dv.getUint32(eocd + 16, true);
+    const dec = new TextDecoder();
+    const entries = {};
+    for (let k = 0; k < count; k++) {
+        if (dv.getUint32(p, true) !== 0x02014b50) break;
+        const method = dv.getUint16(p + 10, true);
+        const csize = dv.getUint32(p + 20, true);
+        const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+        const local = dv.getUint32(p + 42, true);
+        const name = dec.decode(new Uint8Array(buf, p + 46, nlen));
+        entries[name] = { method, csize, local };
+        p += 46 + nlen + elen + clen;
+    }
+    return {
+        names: Object.keys(entries),
+        async text(name) {
+            const e = entries[name];
+            if (!e) return '';
+            const off = e.local + 30 + dv.getUint16(e.local + 26, true) + dv.getUint16(e.local + 28, true);
+            const data = new Uint8Array(buf, off, e.csize);
+            if (e.method === 0) return dec.decode(data);
+            const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+            return new Response(stream).text();
+        },
+    };
+}
+
+async function extractPptx(file) {
+    const zip = await readZipEntries(await file.arrayBuffer());
+    const slideNo = (n) => Number((n.match(/slide(\d+)\.xml$/) || [])[1]);
+    const slides = zip.names.filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+        .sort((a, b) => slideNo(a) - slideNo(b));
+    if (!slides.length) throw new Error('這份 PPTX 裡沒有投影片');
+    const parser = new DOMParser();
+    const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+    const out = [];
+    let title = '';
+    for (let i = 0; i < slides.length; i++) {
+        const doc = parser.parseFromString(await zip.text(slides[i]), 'application/xml');
+        const lines = [...doc.getElementsByTagNameNS(A, 'p')]
+            .map(pa => [...pa.getElementsByTagNameNS(A, 't')].map(t => t.textContent).join('').trim())
+            .filter(Boolean);
+        if (!lines.length) continue;
+        if (!title) title = lines[0];
+        out.push(`【第 ${i + 1} 頁】${lines[0]}\n` + lines.slice(1).map(l => '・' + l).join('\n'));
+    }
+    if (!out.length) throw new Error('投影片裡讀不到文字（可能都是圖片）');
+    return { title, text: out.join('\n\n'), pages: slides.length };
+}
+
+function showUploadChip(html, isError) {
+    const chip = document.getElementById('upload-chip');
+    if (!chip) return;
+    chip.hidden = false;
+    chip.classList.toggle('is-error', !!isError);
+    chip.innerHTML = html;
+    const x = chip.querySelector('button');
+    if (x) x.addEventListener('click', () => {
+        uploadedMaterial = null;
+        chip.hidden = true;
+    });
+}
+
+function setUploadFormat(fmt) {
+    guideData.formats = [fmt];
+    document.querySelectorAll('#upload-formats button').forEach(b =>
+        b.classList.toggle('selected', b.dataset.format === fmt));
+}
+
+function initUpload() {
+    const btn = document.querySelector('.upload-btn');
+    if (!btn) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pptx,.pdf,.txt,.md,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf,text/plain';
+    input.hidden = true;
+    document.body.appendChild(input);
+    btn.addEventListener('click', () => input.click());
+
+    document.querySelectorAll('#upload-formats button').forEach(b =>
+        b.addEventListener('click', () => setUploadFormat(b.dataset.format)));
+
+    input.addEventListener('change', async () => {
+        const f = input.files[0];
+        input.value = '';
+        if (!f) return;
+        const name = escapeHtml(f.name);
+        showUploadChip(`<span class="material-symbols-outlined">hourglass_top</span><span class="uc-name">正在讀取 ${name}…</span>`);
+        try {
+            let m;
+            const lower = f.name.toLowerCase();
+            if (lower.endsWith('.pptx')) {
+                m = await extractPptx(f);
+            } else if (lower.endsWith('.pdf')) {
+                const j = await EduAI.extractPdf(f);
+                if (!j.content) throw new Error('PDF 裡讀不到文字（可能是掃描圖片）');
+                m = { title: '', text: j.content, pages: j.pages };
+            } else if (lower.endsWith('.ppt')) {
+                throw new Error('舊版 .ppt 讀不了，請在 PowerPoint 另存成 .pptx 再上傳');
+            } else {
+                m = { title: '', text: (await f.text()).trim(), pages: 0 };
+            }
+            uploadedMaterial = { name: f.name, ...m };
+            const meta = `${m.pages ? m.pages + ' 頁・' : ''}${m.text.length.toLocaleString()} 字`;
+            showUploadChip(`<span class="material-symbols-outlined">attach_file</span>` +
+                `<span class="uc-name" title="${name}">${name}</span><span class="uc-meta">${meta}</span>` +
+                `<button type="button" title="移除">✕</button>`);
+            // 上傳的是 PPT 又還沒選格式 → 預設生成簡報
+            if (!guideData.formats.length) setUploadFormat(lower.endsWith('.pptx') ? '智慧簡報' : '文字講義');
+            const ta = document.getElementById('main-textarea');
+            if (ta && !ta.value.trim()) ta.placeholder = '可以補充想怎麼生成（例如：整理成 10 頁、加上例題），不填也可以直接生成';
+        } catch (e) {
+            uploadedMaterial = null;
+            showUploadChip(`<span class="material-symbols-outlined">error</span><span class="uc-name">${escapeHtml(e.message)}</span>` +
+                `<button type="button" title="關閉">✕</button>`, true);
+        }
+    });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    initUpload();
     document.querySelectorAll('.mode-card').forEach(card => {
         card.addEventListener('click', () => selectMode(card.dataset.mode));
     });
@@ -150,16 +287,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const textArea = document.querySelector('.prompt-box textarea');
     if (generateBtn && textArea) {
         generateBtn.addEventListener('click', () => {
-            if (textArea.value.trim() === '') {
-                alert('請先輸入學習內容或主題喔！');
+            const typed = textArea.value.trim();
+            if (!typed && !uploadedMaterial) {
+                alert('請先輸入學習內容或主題，或上傳講義喔！');
                 return;
             }
+            // 有上傳講義：主題用輸入的文字，沒輸入就用投影片標題或檔名；內容交給 AI 當教材
+            const fileTopic = uploadedMaterial
+                ? (uploadedMaterial.title || uploadedMaterial.name.replace(/\.[^.]+$/, '')).slice(0, 40)
+                : '';
             // 把主題帶到功能頁，讓該頁自動生成（原本只跳頁、沒帶資料）
             EduAIGuide.save({
-                topic: guideData.topic || textArea.value.trim(),
+                topic: guideData.topic || (typed && typed.length <= 60 ? typed : '') || fileTopic || typed.slice(0, 40),
                 level: guideData.level,
                 formats: guideData.formats,
-                content: '',
+                content: uploadedMaterial
+                    ? (typed && typed !== guideData.topic ? `【使用者需求】${typed}\n\n` : '') + uploadedMaterial.text
+                    : '',
             });
             // 依選擇的輸出格式決定要去哪一頁
             const f = guideData.formats;

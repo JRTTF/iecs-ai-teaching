@@ -871,6 +871,219 @@ app.use('/ai', (req, res) => {
   req.pipe(upstream);
 });
 
+// ═══════════════════════════════════════════════════════════
+//  長時間生成：工作編號 + 排隊 + 輪詢
+//
+//  從外面（通道）進來的連線，一個請求撐到 5 分鐘就會被切斷，但簡報要跑 8～15 分鐘。
+//  所以不讓瀏覽器一直等同一個請求：
+//    POST /ai-jobs/<引擎路徑>   → 表單先存成暫存檔，立刻回 { jobId }
+//    GET  /ai-jobs/:id/status  → queued / running / done / error / cancelled，含排隊位置與進度
+//    GET  /ai-jobs/:id/result  → 原封不動的引擎回應（狀態碼、標頭、內容）
+//    POST /ai-jobs/:id/cancel  → 停止自己的工作（排隊中直接取消；進行中通知引擎停下）
+//  AI 引擎一次只做得動一份，所以由這裡排隊、一次只送一份過去：
+//  排隊的工作要取消時不會碰到別人，停止時也只會停到正在跑的那一份。
+//  結果先寫到暫存檔（簡報 HTML、影片 MP4 可能很大），完成後保留 30 分鐘讓使用者重試。
+// ═══════════════════════════════════════════════════════════
+const os = require('os');
+const crypto = require('crypto');
+const AI_JOBS = new Map();
+const AI_JOB_DIR = path.join(os.tmpdir(), 'iecs-ai-jobs');
+fs.mkdirSync(AI_JOB_DIR, { recursive: true });
+const AI_JOB_KEEP_MS = 30 * 60 * 1000;
+// 回給瀏覽器時要保留的標頭（簡報編號、影片時間軸、下載檔名）
+const AI_JOB_HEADERS = ['content-type', 'content-disposition', 'x-presentation-id', 'x-video-timeline'];
+// 停止旗標：引擎生成時連 HTTP 都接不進來，所以用檔案通知（引擎那邊會邊生成邊檢查）
+const AI_CANCEL_FILE = process.env.EDUAI_CANCEL_FILE || path.join(os.tmpdir(), 'eduai-cancel.flag');
+
+function aiJobFinish(job, status, extra = {}) {
+  Object.assign(job, { status, doneAt: Date.now() }, extra);
+  fs.unlink(job.bodyFile, () => {});
+  setImmediate(aiJobPump);
+}
+
+// 引擎空著就把最早排隊的那份送過去
+function aiJobPump() {
+  for (const j of AI_JOBS.values()) if (j.status === 'running') return;
+  const next = [...AI_JOBS.values()]
+    .filter(j => j.status === 'queued')
+    .sort((a, b) => a.createdAt - b.createdAt)[0];
+  if (!next) return;
+  next.status = 'running';
+  next.startedAt = Date.now();
+  fs.unlink(AI_CANCEL_FILE, () => {});   // 上一份留下的停止旗標不能算到這一份頭上
+
+  let size = 0;
+  try { size = fs.statSync(next.bodyFile).size; } catch { /* 下面會失敗 */ }
+  const upstream = http.request({
+    ...AI_UPSTREAM, method: 'POST', path: next.path, timeout: 0,
+    headers: { 'content-type': next.contentType, 'content-length': size },
+  }, (up) => {
+    next.statusCode = up.statusCode;
+    for (const h of AI_JOB_HEADERS) if (up.headers[h]) next.headers[h] = up.headers[h];
+    const out = fs.createWriteStream(next.file);
+    up.pipe(out);
+    out.on('finish', () => {
+      // 499 是引擎收到停止旗標後的回應
+      if (up.statusCode === 499 || next.cancelRequested) return aiJobFinish(next, 'cancelled', { error: '已停止生成' });
+      aiJobFinish(next, up.statusCode < 400 ? 'done' : 'error');
+    });
+    out.on('error', () => aiJobFinish(next, 'error', { error: '無法寫入生成結果' }));
+  });
+  upstream.on('error', (err) => {
+    if (next.status !== 'running') return;
+    aiJobFinish(next, next.cancelRequested ? 'cancelled' : 'error', {
+      statusCode: 502,
+      error: next.cancelRequested ? '已停止生成' : 'AI 引擎未啟動（' + err.code + '）',
+    });
+  });
+  next.upstream = upstream;
+  fs.createReadStream(next.bodyFile).pipe(upstream);
+}
+
+// 停止的網址（/ai-jobs/<編號>/cancel）也是這個開頭，要排除，不然會被當成一份新工作送去引擎
+app.post(/^\/ai-jobs\/(?![0-9a-f-]{36}\/cancel$)(.+)$/, (req, res) => {
+  const id = crypto.randomUUID();
+  // 主題、使用者由前端放在標頭（表單內容原封不動轉給引擎，這裡不解析）
+  const dec = (v) => { try { return decodeURIComponent(v || ''); } catch { return ''; } };
+  const job = {
+    status: 'queued', statusCode: 0, headers: {},
+    file: path.join(AI_JOB_DIR, id),
+    bodyFile: path.join(AI_JOB_DIR, id + '.form'),
+    contentType: req.headers['content-type'] || '',
+    path: '/' + req.params[0],
+    topic: dec(req.headers['x-job-topic']).slice(0, 100),
+    userId: Number(req.headers['x-user-id']) || null,
+    createdAt: Date.now(),
+    startedAt: null,
+    doneAt: 0,
+    fetched: false,
+    cancelRequested: false,
+  };
+  // 表單先存起來：排隊期間瀏覽器早就拿到回應了，輪到時再從檔案送給引擎
+  const body = fs.createWriteStream(job.bodyFile);
+  req.pipe(body);
+  body.on('finish', () => {
+    AI_JOBS.set(id, job);
+    res.status(202).json({ jobId: id });
+    aiJobPump();
+  });
+  body.on('error', () => res.status(500).json({ error: '無法暫存這份請求' }));
+});
+
+// 排在它前面的工作數：0 代表引擎正在做這一份
+function aiJobPosition(job) {
+  if (job.status === 'running') return 0;
+  if (job.status !== 'queued') return null;
+  let n = 0;
+  for (const j of AI_JOBS.values()) {
+    if (j.status === 'running' || (j.status === 'queued' && j.createdAt < job.createdAt)) n++;
+  }
+  return n;
+}
+
+app.get('/ai-jobs/:id/status', (req, res) => {
+  const job = AI_JOBS.get(req.params.id);
+  if (!job) return res.status(404).json({ error: '找不到這個生成工作（可能伺服器重啟過）。' });
+  res.json({
+    status: job.status, error: job.error || null, topic: job.topic, path: job.path,
+    createdAt: job.createdAt, startedAt: job.startedAt, fetched: job.fetched,
+    cancelRequested: job.cancelRequested, position: aiJobPosition(job),
+    progress: job.status === 'running' ? readAiProgress() : null,
+  });
+});
+
+app.get('/ai-jobs/:id/result', (req, res) => {
+  const job = AI_JOBS.get(req.params.id);
+  if (!job) return res.status(404).json({ error: '找不到這個生成工作（可能伺服器重啟過）。' });
+  if (job.status === 'queued' || job.status === 'running') return res.status(409).json({ error: '還在生成中。' });
+  if (job.status === 'cancelled') return res.status(499).json({ error: '已停止生成', cancelled: true });
+  if (job.error) return res.status(job.statusCode || 502).json({ error: job.error });
+  job.fetched = true;
+  res.status(job.statusCode || 500);
+  for (const [k, v] of Object.entries(job.headers)) res.setHeader(k, v);
+  fs.createReadStream(job.file).on('error', () => res.end()).pipe(res);
+});
+
+// 停止：只能停自己的（工作編號只會給本人，而且登入者要對得上）
+app.post('/ai-jobs/:id/cancel', (req, res) => {
+  const job = AI_JOBS.get(req.params.id);
+  if (!job) return res.status(404).json({ error: '找不到這個生成工作。' });
+  const uid = Number(req.headers['x-user-id']) || null;
+  if (job.userId && job.userId !== uid) return res.status(403).json({ error: '只能停止自己的生成工作。' });
+  if (job.status === 'queued') {
+    aiJobFinish(job, 'cancelled', { error: '已停止生成' });
+    return res.json({ status: 'cancelled' });
+  }
+  if (job.status !== 'running') return res.json({ status: job.status });
+  job.cancelRequested = true;
+  fs.writeFile(AI_CANCEL_FILE, job.path, () => {});
+  // 保險：引擎在某段不會檢查旗標的地方卡太久，就直接斷開連線，讓排隊的下一份可以開始
+  setTimeout(() => {
+    if (job.status === 'running' && job.upstream) job.upstream.destroy(new Error('cancelled'));
+  }, 3 * 60 * 1000).unref();
+  res.json({ status: 'stopping' });
+});
+
+// ── 生成進度：引擎把進度寫在暫存資料夾的檔案裡 ──
+// 生成時模型呼叫會卡住整個引擎，直接問引擎常常問不到；讀檔案不受影響。
+const AI_PROGRESS_FILE = process.env.EDUAI_PROGRESS_FILE || path.join(os.tmpdir(), 'eduai-progress.json');
+function readAiProgress() {
+  try {
+    const p = JSON.parse(fs.readFileSync(AI_PROGRESS_FILE, 'utf8'));
+    const busy = !!p.stage && p.stage !== '完成';
+    return {
+      stage: p.stage || '', pct: p.pct || 0, busy,
+      // 已經過幾秒用伺服器時間算，避免使用者電腦時鐘不準
+      elapsed: busy && p.started ? Math.max(0, Math.round(Date.now() / 1000 - p.started)) : 0,
+    };
+  } catch {
+    return { stage: '', pct: 0, busy: false, elapsed: 0 };
+  }
+}
+app.get('/api/ai-progress', (req, res) => res.json(readAiProgress()));
+
+// ── 背景工作區：列出最近的生成工作 ──
+// 自己的工作看得到主題；別人的只顯示種類，用來知道前面還有幾份在排隊。
+const AI_JOB_KINDS = {
+  '/make_html_slide': '簡報', '/youtube_slide': '簡報（YouTube）', '/edit_slide': '修改簡報',
+  '/make_teaching_video': '影片', '/make_quiz_json': '測驗', '/make_quiz_html': '測驗',
+  '/export_pptx': '匯出 PPTX',
+};
+app.get('/api/ai-jobs', (req, res) => {
+  const me = Number(req.query.userId) || null;
+  const list = [...AI_JOBS.entries()]
+    .sort((a, b) => a[1].createdAt - b[1].createdAt)
+    .map(([id, j]) => {
+      const mine = !!me && j.userId === me;
+      return {
+        id: mine ? id : null,          // 工作編號等於取結果、停止的鑰匙，只給本人
+        mine,
+        kind: AI_JOB_KINDS[j.path] || '生成',
+        path: j.path,
+        topic: mine ? j.topic : '',
+        status: j.status,
+        position: aiJobPosition(j),
+        cancelRequested: j.cancelRequested,
+        fetched: j.fetched,
+        createdAt: j.createdAt,
+        startedAt: j.startedAt,
+        doneAt: j.doneAt || null,
+      };
+    });
+  res.json({ progress: readAiProgress(), jobs: list });
+});
+
+// 清掉過期的工作與暫存檔
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, job] of AI_JOBS) {
+    if (job.doneAt && now - job.doneAt > AI_JOB_KEEP_MS) {
+      fs.unlink(job.file, () => {});
+      AI_JOBS.delete(id);
+    }
+  }
+}, 5 * 60 * 1000).unref();
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);

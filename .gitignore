@@ -9,3 +9,4 @@ tools/cloudflared.exe
 tools/ngrok.exe
 tunnel.log
 PUBLIC_URL.txt
+bat_out.txt
