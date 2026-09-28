@@ -26,6 +26,11 @@
     .comment-area.show { display: block; }
     .comment-item { padding: 8px 0; font-size: .93rem; line-height: 1.6; }
     .comment-item .who { font-weight: 700; margin-right: 8px; }
+    .comment-item { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+    .c-avatar { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; color: var(--accent-color);
+      background-color: var(--bg-secondary); border: 1px solid var(--divider-color); }
     .comment-input-row { display: flex; gap: 8px; margin-top: 10px; }
     .comment-input-row input { flex: 1; padding: 10px 12px; border-radius: 8px;
       border: 1px solid var(--divider-color); background: transparent;
@@ -116,6 +121,7 @@
 
 </div>
 <script src="common.js"></script>
+<script src="eduai.js"></script>   <!-- 側欄「最近活動」改顯示真實紀錄 -->
 <script>
 (function () {
   const listEl   = document.getElementById('forum-list');
@@ -156,6 +162,14 @@
     return e;
   }
 
+  // 留言用的小頭像
+  function commentAvatar(author) {
+    const a = el('span', 'c-avatar');
+    const nm = (author && (author.nickname || author.realName)) || '訪';
+    applyAvatar(a, author || {}, nm);
+    return a;
+  }
+
   function iconBtn(icon, countValue) {
     const btn = el('button', 'interaction-btn');
     const ic = el('span', 'material-symbols-outlined', icon);
@@ -171,7 +185,9 @@
     const name = (post.author && (post.author.nickname || post.author.realName)) || '訪客';
 
     const header = el('div', 'post-header-info');
-    header.appendChild(el('div', 'author-avatar', name.charAt(0)));
+    const av = el('div', 'author-avatar');
+    applyAvatar(av, post.author || {}, name);   // 有上傳頭像就顯示圖片，沒有就顯示名字首字
+    header.appendChild(av);
 
     const metaWrap = el('div', 'post-meta-and-tags');
     const tagRow = el('div', 'post-tags');
@@ -236,6 +252,7 @@
         }
         comments.forEach(c => {
           const row = el('div', 'comment-item');
+          row.appendChild(commentAvatar(c.author));
           row.appendChild(el('span', 'who', (c.author && c.author.nickname) || '訪客'));
           row.appendChild(document.createTextNode(c.content));
           cmtArea.appendChild(row);
@@ -265,6 +282,7 @@
             const j = await rr.json();
             if (!rr.ok) throw new Error(j.error || '留言失敗');
             const added = el('div', 'comment-item');
+            added.appendChild(commentAvatar(j.author));
             added.appendChild(el('span', 'who', (j.author && j.author.nickname) || '我'));
             added.appendChild(document.createTextNode(j.content));
             cmtArea.insertBefore(added, row);

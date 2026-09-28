@@ -218,7 +218,8 @@ function publicPost(post) {
     content: post.content,
     tags,
     createdAt: post.createdAt,
-    author: post.user ? { id: post.user.id, nickname: post.user.nickname, realName: post.user.realName } : null,
+    author: post.user ? { id: post.user.id, nickname: post.user.nickname, realName: post.user.realName,
+                          avatarUrl: post.user.avatarUrl || null } : null,   // 論壇顯示使用者上傳的頭像
     likeCount: post._count ? post._count.likes : 0,
     commentCount: post._count ? post._count.comments : 0,
   };
@@ -295,7 +296,7 @@ app.get('/api/posts/:id/comments', async (req, res) => {
     id: c.id,
     content: c.content,
     createdAt: c.createdAt,
-    author: c.user ? { id: c.user.id, nickname: c.user.nickname } : null,
+    author: c.user ? { id: c.user.id, nickname: c.user.nickname, avatarUrl: c.user.avatarUrl || null } : null,
   })));
 });
 
@@ -321,7 +322,7 @@ app.post('/api/posts/:id/comments', async (req, res) => {
     id: comment.id,
     content: comment.content,
     createdAt: comment.createdAt,
-    author: comment.user ? { id: comment.user.id, nickname: comment.user.nickname } : null,
+    author: comment.user ? { id: comment.user.id, nickname: comment.user.nickname, avatarUrl: comment.user.avatarUrl || null } : null,
   });
 });
 
