@@ -22,6 +22,48 @@ function _asQuestion(msg) {
   return (msg.length <= 12 && !/[?？\n]/.test(msg)) ? msg + '？' : msg;
 }
 
+/* ── 上傳講義的圖片：存在瀏覽器的 IndexedDB ──
+ * 主頁讀完講義後存起來，跳到簡報頁生成時再拿出來一起送出。
+ * 圖片可能好幾 MB，sessionStorage 放不下，所以用 IndexedDB。
+ * 記錄上「這批圖屬於哪個主題」，避免之後生成別的主題時誤用舊圖。 */
+const EduAIMaterial = {
+  _db() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('eduai', 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('material');
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  async _put(value) {
+    const db = await this._db();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('material', 'readwrite');
+      tx.objectStore('material').put(value, 'images');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  },
+  async _get() {
+    const db = await this._db();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction('material').objectStore('material').get('images');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  },
+  save(images) { return this._put({ topic: '', images }).catch(() => {}); },
+  async setTopic(topic) {
+    try { const r = await this._get(); if (r) await this._put({ ...r, topic }); } catch { /* 存不了就不帶圖 */ }
+  },
+  /** 只回傳屬於這個主題的圖。 */
+  async load(topic) {
+    try { const r = await this._get(); return r && r.topic === topic ? r.images || [] : []; }
+    catch { return []; }
+  },
+  clear() { return this._put(null).catch(() => {}); },
+};
+
 /** 把文字轉成可安全放進 innerHTML 的字串。標題、主題可能來自 AI 或資料庫，
  *  而資料庫可以被任何人寫入，不跳脫就會變成 XSS。 */
 function escapeHtml(s) {
@@ -186,11 +228,16 @@ const EduAI = {
   },
 
   /** 主題（＋可選教材）→ 互動簡報 HTML。 */
-  generateSlides(topic, content = '', theme = '瑞士國際', onProgress) {
+  /** images：上傳講義裡取出的圖 [{blob, caption}]，AI 會把它們放到內容相關的投影片。 */
+  generateSlides(topic, content = '', theme = '瑞士國際', onProgress, images = []) {
     const form = new FormData();
     form.append('topic', topic);
     form.append('content', content);
     form.append('theme', theme);
+    if (images.length) {
+      images.forEach((im, k) => form.append('images', im.blob, `material-${k + 1}.jpg`));
+      form.append('image_captions', JSON.stringify(images.map(im => im.caption || '')));
+    }
     return this._postForBlob('/make_html_slide', form, onProgress);
   },
 

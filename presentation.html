@@ -376,7 +376,8 @@
       const onProg = (txt, pct) => { subtitle.textContent = txt; setBar(pct); };
       const result = jobParam
         ? await EduAI.resumeSlides(jobParam, onProg)
-        : await EduAI.generateSlides(topic, (guide && guide.content) || '', '瑞士國際', onProg);
+        : await EduAI.generateSlides(topic, (guide && guide.content) || '', '瑞士國際', onProg,
+            await EduAIMaterial.load(topic));
       setBar(100);
       setTimeout(() => setBar(null), 800);
 

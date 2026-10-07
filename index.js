@@ -113,6 +113,14 @@ async function readZipEntries(buf) {
     }
     return {
         names: Object.keys(entries),
+        async blob(name) {
+            const e = entries[name];
+            if (!e) return null;
+            const off = e.local + 30 + dv.getUint16(e.local + 26, true) + dv.getUint16(e.local + 28, true);
+            const data = new Uint8Array(buf, off, e.csize);
+            if (e.method === 0) return new Blob([data]);
+            return new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob();
+        },
         async text(name) {
             const e = entries[name];
             if (!e) return '';
@@ -134,18 +142,62 @@ async function extractPptx(file) {
     const parser = new DOMParser();
     const A = 'http://schemas.openxmlformats.org/drawingml/2006/main';
     const out = [];
+    const mediaUse = {};   // 圖檔 → 用到它的投影片 [{page, text}]
     let title = '';
     for (let i = 0; i < slides.length; i++) {
         const doc = parser.parseFromString(await zip.text(slides[i]), 'application/xml');
         const lines = [...doc.getElementsByTagNameNS(A, 'p')]
             .map(pa => [...pa.getElementsByTagNameNS(A, 't')].map(t => t.textContent).join('').trim())
             .filter(Boolean);
+        // 這頁引用了哪些圖（寫在 _rels/slideN.xml.rels）
+        const rels = await zip.text(slides[i].replace('slides/', 'slides/_rels/') + '.rels');
+        for (const m of rels.matchAll(/Target="\.\.\/media\/([^"]+)"/g)) {
+            (mediaUse[m[1]] = mediaUse[m[1]] || []).push({ page: i + 1, text: lines.join(' ') });
+        }
         if (!lines.length) continue;
         if (!title) title = lines[0];
         out.push(`【第 ${i + 1} 頁】${lines[0]}\n` + lines.slice(1).map(l => '・' + l).join('\n'));
     }
     if (!out.length) throw new Error('投影片裡讀不到文字（可能都是圖片）');
-    return { title, text: out.join('\n\n'), pages: slides.length };
+    const images = await pickPptxImages(zip, mediaUse);
+    return { title, text: out.join('\n\n'), pages: slides.length, images };
+}
+
+// 從 PPTX 挑出值得放進簡報的圖：
+// - 只要網頁能顯示的格式（png/jpg/gif/webp），EMF 之類的向量圖跳過
+// - 出現在 3 頁以上的多半是樣板裝飾或 Logo，跳過
+// - 太小的（圖示）跳過；大的縮到 1280px 內、轉 JPEG，傳送和存檔都比較輕
+// 每張圖附上它原本那頁的文字，AI 用來判斷該配到哪一頁。最多 12 張，挑面積大的。
+async function pickPptxImages(zip, mediaUse) {
+    const picked = [];
+    for (const [name, uses] of Object.entries(mediaUse)) {
+        if (!/\.(png|jpe?g|gif|webp)$/i.test(name) || uses.length >= 3) continue;
+        const blob = await zip.blob('ppt/media/' + name);
+        if (!blob) continue;
+        const shrunk = await shrinkImage(blob);
+        if (!shrunk) continue;
+        picked.push({ blob: shrunk.blob, area: shrunk.area,
+                      caption: uses.map(u => u.text).join(' ').slice(0, 300), page: uses[0].page });
+    }
+    return picked.sort((a, b) => b.area - a.area).slice(0, 12)
+        .sort((a, b) => a.page - b.page)
+        .map(({ blob, caption }) => ({ blob, caption }));
+}
+
+async function shrinkImage(blob, max = 1280) {
+    let bmp;
+    try { bmp = await createImageBitmap(blob); } catch { return null; }
+    if (bmp.width < 300 || bmp.height < 200) return null;
+    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * k);
+    c.height = Math.round(bmp.height * k);
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff';            // 透明背景的 PNG 轉 JPEG 時墊白底
+    g.fillRect(0, 0, c.width, c.height);
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    const out = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+    return out ? { blob: out, area: bmp.width * bmp.height } : null;
 }
 
 function showUploadChip(html, isError) {
@@ -157,6 +209,7 @@ function showUploadChip(html, isError) {
     const x = chip.querySelector('button');
     if (x) x.addEventListener('click', () => {
         uploadedMaterial = null;
+        EduAIMaterial.clear();
         chip.hidden = true;
     });
 }
@@ -194,14 +247,22 @@ function initUpload() {
             } else if (lower.endsWith('.pdf')) {
                 const j = await EduAI.extractPdf(f);
                 if (!j.content) throw new Error('PDF 裡讀不到文字（可能是掃描圖片）');
-                m = { title: '', text: j.content, pages: j.pages };
+                const images = [];
+                for (const im of j.images || []) {
+                    try { images.push({ blob: await (await fetch(im.data)).blob(), caption: im.caption || '' }); }
+                    catch { /* 單張壞掉就略過 */ }
+                }
+                m = { title: '', text: j.content, pages: j.pages, images };
             } else if (lower.endsWith('.ppt')) {
                 throw new Error('舊版 .ppt 讀不了，請在 PowerPoint 另存成 .pptx 再上傳');
             } else {
                 m = { title: '', text: (await f.text()).trim(), pages: 0 };
             }
             uploadedMaterial = { name: f.name, ...m };
-            const meta = `${m.pages ? m.pages + ' 頁・' : ''}${m.text.length.toLocaleString()} 字`;
+            await EduAIMaterial.save(m.images || []);
+            const nImg = (m.images || []).length;
+            const meta = `${m.pages ? m.pages + ' 頁・' : ''}${m.text.length.toLocaleString()} 字` +
+                (nImg ? `・${nImg} 張圖` : '');
             showUploadChip(`<span class="material-symbols-outlined">attach_file</span>` +
                 `<span class="uc-name" title="${name}">${name}</span><span class="uc-meta">${meta}</span>` +
                 `<button type="button" title="移除">✕</button>`);
@@ -211,6 +272,7 @@ function initUpload() {
             if (ta && !ta.value.trim()) ta.placeholder = '可以補充想怎麼生成（例如：整理成 10 頁、加上例題），不填也可以直接生成';
         } catch (e) {
             uploadedMaterial = null;
+            EduAIMaterial.clear();
             showUploadChip(`<span class="material-symbols-outlined">error</span><span class="uc-name">${escapeHtml(e.message)}</span>` +
                 `<button type="button" title="關閉">✕</button>`, true);
         }
@@ -286,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateBtn = document.querySelector('.generate-main-btn');
     const textArea = document.querySelector('.prompt-box textarea');
     if (generateBtn && textArea) {
-        generateBtn.addEventListener('click', () => {
+        generateBtn.addEventListener('click', async () => {
             const typed = textArea.value.trim();
             if (!typed && !uploadedMaterial) {
                 alert('請先輸入學習內容或主題，或上傳講義喔！');
@@ -305,6 +367,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     ? (typed && typed !== guideData.topic ? `【使用者需求】${typed}\n\n` : '') + uploadedMaterial.text
                     : '',
             });
+            // 講義圖片跟著這次的主題；沒上傳講義就清掉，免得帶到別的主題
+            const savedTopic = EduAIGuide.load().topic;
+            if (uploadedMaterial) await EduAIMaterial.setTopic(savedTopic);
+            else await EduAIMaterial.clear();
             // 依選擇的輸出格式決定要去哪一頁
             const f = guideData.formats;
             if (f.includes('智慧簡報')) {
