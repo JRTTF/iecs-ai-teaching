@@ -346,6 +346,39 @@
     }
   });
 
+  // 出好的題目存進資料庫 → 重新載入列表 → 直接開始作答
+  async function saveAndStart(u, quiz, title) {
+    const r = await fetch(`${API_BASE_URL}/api/quizzes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: u.id, title, questions: quiz.questions }),
+    });
+    const saved = await r.json();
+    if (!r.ok) throw new Error(saved.error || `HTTP ${r.status}`);
+    setStatus(`已生成並儲存「${escapeHtml(title)}」（共 ${saved.questionCount} 題），可直接開始作答。`);
+    await loadList();
+    startQuiz(saved.id);
+  }
+
+  // 從背景工作區點「開啟」：出題時離開了這頁，題目做好了卻沒存進紀錄，這裡接回來
+  async function resumeFromJob(jobId) {
+    const u = getUser();
+    if (!u) { setStatus('請先登入，測驗才能存進你的帳號。'); return; }
+    genBtn.disabled = true;
+    setStatus('正在取回出好的題目…', true);
+    try {
+      const st = await EduAI.jobStatus(jobId);
+      const quiz = await EduAI.resumeQuizJson(jobId, (txt) => setStatus(escapeHtml(txt), true));
+      const name = st.topic || quiz.title || '';
+      await saveAndStart(u, quiz, (name ? name + ' - ' : '') + '隨堂測驗');
+      history.replaceState(null, '', 'quiz.html');   // 重新整理時不要再存一次
+    } catch (e) {
+      setStatus('取回測驗失敗：' + escapeHtml(e.message));
+    } finally {
+      genBtn.disabled = false;
+    }
+  }
+
   // ── 生成測驗：AI 出題 → 存進資料庫 → 重新載入列表 ──
   genBtn.addEventListener('click', async () => {
     const input = textEl.value.trim();
@@ -370,17 +403,7 @@
         (txt) => setStatus(escapeHtml(txt), true));
 
       const title = (asTopic ? input : input.slice(0, 20) + '…') + ' - 隨堂測驗';
-      const r = await fetch(`${API_BASE_URL}/api/quizzes`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: u.id, title, questions: quiz.questions }),
-      });
-      const saved = await r.json();
-      if (!r.ok) throw new Error(saved.error || `HTTP ${r.status}`);
-
-      setStatus(`已生成並儲存「${title}」（共 ${saved.questionCount} 題），可直接開始作答。`);
-      await loadList();
-      startQuiz(saved.id);
+      await saveAndStart(u, quiz, title);
     } catch (e) {
       setStatus('生成失敗：' + e.message);
     } finally {
@@ -389,6 +412,8 @@
   });
 
   loadList().then(() => {
+    const jobId = new URLSearchParams(location.search).get('job');
+    if (jobId) { resumeFromJob(jobId); return; }
     // 從「最近活動」點進來：直接開那份測驗
     const qid = new URLSearchParams(location.search).get('quiz');
     if (qid) startQuiz(Number(qid));

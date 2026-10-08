@@ -33,6 +33,29 @@
       color: var(--text-primary); font-family: inherit; font-size: .95rem; resize: vertical; }
     .edit-bar textarea:focus { outline: none; border-color: var(--accent-color); }
     .edit-bar .edit-hint { font-size: .78rem; opacity: .6; margin: 6px 0 0; width: 100%; }
+
+    /* 左簡報、右修改：寬螢幕並排（右側面板跟著捲動固定在畫面上），窄螢幕上下排列 */
+    .pres-workspace { width: 100%; max-width: 1560px; display: grid; grid-template-columns: 1fr;
+      gap: 28px; align-items: start; }
+    .pres-left { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+    .pres-left .slide-preview { width: min(100%, calc((100vh - 120px) * 16 / 9)); max-width: none; }
+    .pres-edit-panel { background: var(--bg-card); border: 1px solid var(--divider-color);
+      border-radius: 14px; padding: 18px 18px 16px; }
+    .pres-edit-panel .edit-title { display: flex; align-items: center; gap: 6px; margin: 0 0 6px;
+      font-size: 1rem; color: var(--text-primary); }
+    .pres-edit-panel .edit-title .material-symbols-outlined { font-size: 20px; color: var(--accent-color); }
+    .pres-edit-panel .edit-target { margin: 0 0 12px; font-size: .86rem; color: var(--text-secondary); }
+    .pres-edit-panel .edit-target b { color: var(--text-primary); }
+    .pres-edit-panel .edit-empty { margin: 4px 0 0; font-size: .86rem; color: var(--text-muted); line-height: 1.6; }
+    .pres-edit-panel .edit-bar { margin: 0; }
+    .pres-edit-panel .edit-hint { margin: 10px 0 0; font-size: .8rem; color: var(--text-muted); line-height: 1.6; }
+    @media (min-width: 1100px) {
+      .pres-workspace { grid-template-columns: minmax(0, 1fr) 340px; }
+      .pres-edit-panel { position: sticky; top: 24px; }
+      .pres-edit-panel .edit-bar.show { flex-direction: column; align-items: stretch; }
+      .pres-edit-panel .edit-bar textarea { min-height: 170px; max-height: 360px; }
+      .pres-edit-panel .edit-bar .generate-main-btn { justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -99,23 +122,33 @@
       <p class="subtitle" id="hero-subtitle">AI 已為您生成 10 頁投影片，您可以進行編輯或直接匯出。</p>
       <div class="gen-bar" id="gen-bar"><span></span></div>
     </div>
-    <div class="slide-preview is-empty" id="slide-preview">
-      <span class="preview-msg" id="preview-msg">Slide #1: 機器人學概論 - 課程標題</span>
-      <iframe id="slide-frame" title="AI 生成簡報"></iframe>
+    <!-- 寬螢幕：左邊簡報、右邊修改面板；窄螢幕自動變成上下排列 -->
+    <div class="pres-workspace">
+      <div class="pres-left">
+        <div class="slide-preview is-empty" id="slide-preview">
+          <span class="preview-msg" id="preview-msg">Slide #1: 機器人學概論 - 課程標題</span>
+          <iframe id="slide-frame" title="AI 生成簡報"></iframe>
+        </div>
+        <div class="slide-controls">
+          <button class="upload-btn" id="prev-btn"><span class="material-symbols-outlined">chevron_left</span> 上一步</button>
+          <span class="page-indicator" id="page-indicator">1 / 10</span>
+          <button class="upload-btn" id="next-btn">下一步 <span class="material-symbols-outlined">chevron_right</span></button>
+          <button class="generate-main-btn" id="pptx-btn"><span class="material-symbols-outlined">download</span> 導出 PPTX</button>
+        </div>
+      </div>
+      <aside class="pres-edit-panel">
+        <h3 class="edit-title"><span class="material-symbols-outlined">auto_fix_high</span> 修改這一頁</h3>
+        <p class="edit-target" id="edit-target"></p>
+        <p class="edit-empty" id="edit-empty">簡報生成完成後，可以在這裡用一句話修改目前顯示的那一頁。</p>
+        <div class="edit-bar" id="edit-bar">
+          <textarea id="edit-input" placeholder="要怎麼改目前這一頁？例如：加一個真實例子、把第二點講清楚一點、標題改短一點"></textarea>
+          <button class="generate-main-btn btn-compact" id="edit-btn">
+            <span class="material-symbols-outlined icon-18">auto_fix_high</span> 修改這一頁
+          </button>
+        </div>
+        <p class="edit-hint" id="edit-hint" hidden>只會改目前顯示的這一頁，其他頁保留；改完會直接更新預覽，可以一直改到滿意為止。</p>
+      </aside>
     </div>
-    <div class="slide-controls">
-      <button class="upload-btn" id="prev-btn"><span class="material-symbols-outlined">chevron_left</span> 上一步</button>
-      <span class="page-indicator" id="page-indicator">1 / 10</span>
-      <button class="upload-btn" id="next-btn">下一步 <span class="material-symbols-outlined">chevron_right</span></button>
-      <button class="generate-main-btn" id="pptx-btn"><span class="material-symbols-outlined">download</span> 導出 PPTX</button>
-    </div>
-    <div class="edit-bar" id="edit-bar">
-      <textarea id="edit-input" placeholder="要怎麼改目前這一頁？例如：加一個真實例子、把第二點講清楚一點、標題改短一點"></textarea>
-      <button class="generate-main-btn btn-compact" id="edit-btn">
-        <span class="material-symbols-outlined icon-18">auto_fix_high</span> 修改這一頁
-      </button>
-    </div>
-    <p class="edit-hint" id="edit-hint" hidden>只會改目前顯示的這一頁，其他頁保留；改完會直接更新預覽，可以一直改到滿意為止。</p>
     <div class="quick-tools-header"><span>投影片縮圖預覽</span></div>
     <div class="slide-thumb-container" id="thumb-container"></div>
     <footer class="main-footer"><span>FCU IECS 畢業專題 | 2026</span></footer>
@@ -163,6 +196,8 @@
     editBtn.disabled = !on || !presId;
     editBar.classList.toggle('show', on && !!presId);   // 有簡報且引擎記得它才顯示修改列
     editHint.hidden = !(on && presId);
+    const empty = document.getElementById('edit-empty');
+    if (empty) empty.hidden = !!(on && presId);
   }
 
   // ── 修改目前這一頁：叫後端只改這一張，換掉預覽後停在同一頁 ──
@@ -234,6 +269,9 @@
   function syncOuter(i) {
     cur = i;
     pageInd.textContent = `${cur + 1} / ${titles.length}`;
+    const tgt = document.getElementById('edit-target');
+    if (tgt) tgt.innerHTML = titles.length
+      ? `目前在第 <b>${cur + 1}</b> 頁：<b>${escapeHtml(titles[cur] || '')}</b>` : '';
     [...outline.children].forEach((li, k) => li.classList.toggle('active', k === cur));
     [...thumbs.children].forEach((d, k) => d.classList.toggle('active', k === cur));
   }
@@ -317,21 +355,27 @@
     pageInd.textContent = `1 / ${titles.length}`;
     setControlsEnabled(true);
     const when = new Date(o.createdAt).toLocaleString('zh-TW');
-    // AI 引擎重啟前都還記得這份簡報：接回 pres_id，「修改這一頁」就能繼續用
+    // 接回 pres_id，「修改這一頁」就能繼續用（簡報內容存在引擎的硬碟上，重啟後也在）
     presId = '';
     const m = /^pres:(\w+)$/.exec(o.contentText || '');
-    if (m && (await EduAI.isOnline())) {
+    const engine = m ? await EduAI.probe() : 'down';
+    if (m && engine === 'ok') {
       try {
         const info = await EduAI.presentationInfo(m[1]);
         if (info && info.titles) { presId = m[1]; titles = info.titles; renderOutline(); }
-      } catch { /* 引擎已重啟、不記得了 → 只能看與匯出 */ }
+      } catch { /* 引擎找不到這份 → 只能看與匯出 */ }
+    } else if (m && engine === 'busy') {
+      // 引擎正在幫別人生成、問不到：先當作還在，修改時會排隊；真的找不到時修改會回報錯誤
+      presId = m[1];
     }
     setControlsEnabled(true);   // presId 已定案，重新決定修改列要不要顯示
     if (presId) {
       subtitle.textContent = `已重新開啟「${topic}」（${when} 生成），可以繼續修改或匯出。`;
     } else {
       editBar.classList.remove('show'); editHint.hidden = true;
-      subtitle.textContent = `已重新開啟「${topic}」（${when} 生成）。AI 引擎已重啟、不再保有這份簡報，可瀏覽與匯出；要修改內容請重新生成。`;
+      subtitle.textContent = engine === 'down'
+        ? `已重新開啟「${topic}」（${when} 生成）。AI 引擎沒有開，可瀏覽與匯出；開啟引擎後重新整理就能修改。`
+        : `已重新開啟「${topic}」（${when} 生成）。找不到這份簡報的原始資料，可瀏覽與匯出；要修改內容請重新生成。`;
     }
   }
 
@@ -352,10 +396,15 @@
       catch (e) { preview.classList.add('is-empty'); setMsg('無法接上這份工作'); subtitle.textContent = e.message; return; }
     }
 
+    // 只有從主頁按「開始生成」過來才生成；還沒拿回結果的工作照樣接回來。
+    // 從側欄圖示點進來只是打開頁面，不會自動生成。
+    if (!jobParam && topic && !EduAIGuide.consumeStart('presentation.html')
+        && !EduAI.hasPendingJob('/make_html_slide', topic)) topic = '';
+
     if (!topic) {
       preview.classList.add('is-empty');
       setMsg('尚未選定主題 — 請回主頁選擇學習主題後開始生成');
-      subtitle.textContent = '請先回到主頁，透過引導流程輸入您想學習的主題。';
+      subtitle.textContent = '請先回到主頁輸入主題並按「開始生成」，或從左側「最近活動」打開之前的簡報。';
       pageInd.textContent = '— / —';
       return;
     }

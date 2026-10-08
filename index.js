@@ -336,7 +336,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!fmt) return;
         a.addEventListener('click', (e) => {
             const saved = EduAIGuide.load();
-            if (saved && saved.topic) return;   // 有主題就照原連結跳頁
+            if (saved && saved.topic) {          // 有主題就照原連結跳頁，並用這個主題生成
+                EduAIGuide.requestStart(a.getAttribute('href'));
+                return;
+            }
             e.preventDefault();
             openGuideFor(fmt);
         });
@@ -373,13 +376,10 @@ document.addEventListener('DOMContentLoaded', () => {
             else await EduAIMaterial.clear();
             // 依選擇的輸出格式決定要去哪一頁
             const f = guideData.formats;
-            if (f.includes('智慧簡報')) {
-                window.location.href = 'presentation.html';
-            } else if (f.includes('影音教材')) {
-                window.location.href = 'video-page.html';
-            } else {
-                window.location.href = 'text-page.html';
-            }
+            const page = f.includes('智慧簡報') ? 'presentation.html'
+                : f.includes('影音教材') ? 'video-page.html' : 'text-page.html';
+            EduAIGuide.requestStart(page);
+            window.location.href = page;
         });
     }
 });

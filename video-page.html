@@ -209,8 +209,13 @@
       catch (e) { setStatus('無法接上這份工作：' + escapeHtml(e.message)); return; }
     }
 
+    // 只有從主頁按「開始生成」過來才生成；還沒拿回結果的工作照樣接回來。
+    // 從側欄圖示點進來只是打開頁面，不會自動生成。
+    if (!jobParam && topic && !EduAIGuide.consumeStart('video-page.html')
+        && !EduAI.hasPendingJob('/make_teaching_video', topic)) topic = '';
+
     if (!topic) {
-      setStatus('尚未選定主題 — 請先<a href="index.html">回主頁</a>透過引導流程選擇學習主題。');
+      setStatus('尚未選定主題 — 請先<a href="index.html">回主頁</a>輸入主題並按「開始生成」，或從左側「最近活動」打開之前的影片。');
       return;
     }
     // 引擎忙也可以送出：工作會排隊，輪到時自動開始；只有引擎沒開才擋下來

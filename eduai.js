@@ -287,6 +287,14 @@ const EduAI = {
     return j;
   },
 
+  /** 接上已經在背景跑的測驗工作（從背景工作區點進來）。 */
+  async resumeQuizJson(jobId, onProgress) {
+    const res = await this._runJob('/make_quiz_json', null, onProgress, jobId);
+    const j = await res.json();
+    if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+    return j;
+  },
+
   /** 上傳 PDF，回傳抽出的純文字（可當教材內容用）。 */
   async uploadPdf(file) {
     const form = new FormData();
@@ -486,6 +494,19 @@ const EduAIGuide = {
     catch { return null; }
   },
   clear() { sessionStorage.removeItem(this.KEY); },
+
+  /* 「這次要自動開始生成」的一次性標記。
+   * 原本功能頁一打開，只要瀏覽器裡留著上次的主題就自動生成：
+   * 使用者只是點側欄圖示看看，也會莫名其妙開始生成簡報、影片。
+   * 現在只有主頁按「開始生成」（或快速工具卡片）才會標記，功能頁讀到就清掉，
+   * 重新整理、從側欄點進來都不會再生成。 */
+  START_KEY: 'eduai_autostart',
+  requestStart(page) { sessionStorage.setItem(this.START_KEY, page); },
+  consumeStart(page) {
+    const ok = sessionStorage.getItem(this.START_KEY) === page;
+    if (ok) sessionStorage.removeItem(this.START_KEY);
+    return ok;
+  },
 };
 
 /* ── 側欄「最近活動」：真實紀錄、依日期分組、點了重開 ──
@@ -561,7 +582,8 @@ document.addEventListener('DOMContentLoaded', () => EduAIHistory.render());
  * AI 引擎一次只做一份，多人使用時常常要等。原本看不到前面有幾份、也不知道自己那份跑到哪，
  * 切到別頁更是完全沒消息。資料來自網站伺服器的 /api/ai-jobs（引擎再忙也問得到）。 */
 const EduAIWorkspace = {
-  PAGE: { '/make_html_slide': 'presentation.html', '/make_teaching_video': 'video-page.html' },
+  PAGE: { '/make_html_slide': 'presentation.html', '/make_teaching_video': 'video-page.html',
+          '/make_quiz_json': 'quiz.html' },
   ICON: { '簡報': 'slideshow', '簡報（YouTube）': 'slideshow', '修改簡報': 'edit_note',
           '影片': 'video_library', '測驗': 'quiz', '匯出 PPTX': 'download' },
   _open: false,

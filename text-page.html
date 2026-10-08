@@ -234,7 +234,8 @@
     }
     const guide = EduAIGuide.load();
     topic = guide && guide.topic ? guide.topic : '';
-    if (!topic) return;   // 沒主題就維持原本提示
+    // 只有從主頁按「開始生成」過來才生成；從側欄點進來只是打開頁面
+    if (!topic || !EduAIGuide.consumeStart('text-page.html')) return;   // 沒主題就維持原本提示
 
     if (!(await EduAI.isOnline())) {
       setStatus(eduaiOfflineMessage().replace(/\n/g, '<br>'));
